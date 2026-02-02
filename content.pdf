@@ -1,0 +1,63 @@
+PHP CONDITIONAL STATEMENTS
+To perform different actions for different conditions,You can use
+conditional statements in your PHP code to do this.
+ if statement - executes some code if one condition is true if...else statement - executes some code if a condition is
+true and another code if that condition is false
+ if...elseif....else statement - executes different codes for
+more than two conditions
+ switch statement - selects one of many blocks of code to
+be executed
+
+PHP - THE IF STATEMENT
+The if statement executes some code if one condition is true.
+Syntax
+ if (condition) {
+code to be executed if condition is true;
+}
+<?php
+$t = date("H");
+if ($t < "20") {
+echo "Have a good day!";
+}
+?>
+
+The if....else statement executes some code if a condition is
+true and another code if that condition is false.
+The if....elseif...else statement executes different codes for
+more than two conditions
+
+THE PHP SWITCH STATEMENT
+
+Use the switch statement to select one of many blocks of code to be executed.
+Syntax
+switch (n) {
+case label1:
+code to be executed if n=label1;
+break;
+case label2:
+code to be executed if n=label2;
+break;
+case label3:
+code to be executed if n=label3;
+break;
+...
+default:
+code to be executed if n is different from all labels;
+}
+
+PHP FOR LOOP
+The for loop is used when you know in advance how many times the script should
+run.
+<?php
+for ($x = 0; $x <= 10;
+$x++) {
+echo "The number
+is: $x <br>";
+}
+?>
+
+Parameters:
+ init counter: Initialize the loop counter value
+ test counter: Evaluated for each loop iteration. If it evaluates to TRUE, the loop
+continues. If it evaluates to FALSE, the loop ends.
+ increment counter: Increases the loop counter value
