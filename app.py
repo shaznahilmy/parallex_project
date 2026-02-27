@@ -10,7 +10,7 @@ from langchain_core.prompts import PromptTemplate
 
 st.set_page_config(page_title="Parallex: Syllabus Auditor", page_icon="🎓", layout="wide")
 
-st.title("🎓 Parallex: Automated Curriculum Auditor")
+st.title(" Parallex: Automated Curriculum Auditor")
 st.markdown("### Cross-Document Semantic Analysis System")
 st.markdown("Upload your **Course Content** and **Guidelines** to check for compliance.")
 
@@ -74,7 +74,7 @@ def create_vector_db(pdf_path):
     return vector_db
 
 prompt_template = """
-You are a strict academic auditor. Your job is to verify if specific technical topics are explicitly taught in the course content.
+You are a strict academic auditor. Your job is to verify if specific topics are explicitly taught in the course content.
 
 GUIDELINE TO CHECK: "{guideline}"
 
