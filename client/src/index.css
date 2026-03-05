@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Adding a soft background color for the whole app */
+body {
+  @apply bg-slate-50 text-slate-800;
+}
