@@ -35,25 +35,9 @@ async def upload_guidelines(file: UploadFile = File(...)):
     file_path = os.path.join(TEMP_DIR, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
-    # Processing the PDF using LangChain
-    loader = PyPDFLoader(file_path)
-    pages = loader.load()
-    full_text = "\n".join([p.page_content for p in pages])    
-  
-    raw_lines = full_text.split('\n')
-    clean_guidelines = []
-    
-    for line in raw_lines:
-        line = line.strip()
-        if len(line) < 10: 
-            continue
-        if line.endswith(";"): 
-            continue
-        if "students will be able to" in line.lower(): 
-            continue
-        clean_guidelines.append(line)
-        
+
+    clean_guidelines = logic.extract_guidelines(file_path)          
+           
     # Returning the clean list as a JSON array
     return {
         "status": "success",
