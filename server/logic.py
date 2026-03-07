@@ -26,6 +26,7 @@ INSTRUCTIONS:
 1. Determine if the guideline is "Fully Covered", "Partially Covered", or "Not Covered".
 2. Start your response with exactly "Match: [Status]".
 3. Provide a concise explanation.
+4. You MUST provide the exact quote from the text that proves your decision. If it is Not Covered, write "Exact Quote: None".
 
 RULES FOR GRADING:
 1. **EXACT MATCH REQUIRED:** If the guideline asks for a specific concept (e.g., "Sessions", "Cookies") and the content only talks about generic logic (e.g., "If statements", "Loops"), the answer MUST be "Not Covered".
@@ -35,6 +36,7 @@ RULES FOR GRADING:
 Answer format:
 Match: [Fully Covered / Partially Covered / Not Covered]
 Reasoning: [Explanation]
+Exact Quote: [The quote from the text]
 """
 prompt = PromptTemplate(input_variables=["guideline", "context"], template=prompt_template)
 
@@ -122,13 +124,14 @@ def run_analysis(guidelines: list):
                 "guideline": rule,
                 "match_status": "Not Covered",
                 "reasoning": f"System Rule Enforcement: No related content found in the document. (Semantic Distance: {best_match_distance:.2f})",
+                "exact_quote": "None",
                 "evidence_text": "No relevant evidence met the similarity threshold."
             })
             continue # Skip to the next rule in the loop
 
 
        # Extracting just the text from the tuple for the LLM
-        context_text = "\n".join([doc.page_content for doc in results_with_scores])
+        context_text = "\n".join([doc.page_content for doc, score in results_with_scores])
         
         # Reasoning
         final_prompt = prompt.format(guideline=rule, context=context_text)
@@ -136,7 +139,8 @@ def run_analysis(guidelines: list):
         
         # Parsinh the LLM output into a clean JSON structure
         match_status = "Unknown"
-        reasoning = response
+        reasoning = "Parsing error"
+        exact_quote = "None"
         
         # Extracting match and reasoning safely
         for line in response.split('\n'):
@@ -144,15 +148,15 @@ def run_analysis(guidelines: list):
                 match_status = line.replace("Match:", "").replace("[", "").replace("]", "").strip()
             elif line.startswith("Reasoning:"):
                 reasoning = line.replace("Reasoning:", "").strip()
+            elif line.startswith("Exact Quote:"):
+                exact_quote = line.replace("Exact Quote:", "").strip()    
         
-        if reasoning == response and "Reasoning:" in response:
-            reasoning = response.split("Reasoning:")[-1].strip()
-
         #  Appending to results list
         audit_results.append({
             "guideline": rule,
             "match_status": match_status,
             "reasoning": reasoning,
+            "exact_quote": exact_quote,
             "evidence_text": context_text
         })
         
