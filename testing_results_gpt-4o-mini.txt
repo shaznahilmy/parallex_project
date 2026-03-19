@@ -1,0 +1,52 @@
+Total tested: 35
+Overall Accuracy: 97.1%
+
+Classification Report:
+                   precision    recall  f1-score   support
+
+    Fully Covered       0.93      1.00      0.96        13
+Partially Covered       1.00      0.90      0.95        10
+      Not Covered       1.00      1.00      1.00        12
+
+         accuracy                           0.97        35
+        macro avg       0.98      0.97      0.97        35
+     weighted avg       0.97      0.97      0.97        35
+
+     
+
+All predictions:
+  [1] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [2] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [3] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [4] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [5] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [6] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [7] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [8] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [9] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [10] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [11] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [12] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [13] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [14] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [15] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [16] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [17] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [18] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [19] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [20] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [21] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [22] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [23] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [24] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [25] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [26] True: Partially Covered    | Pred: Fully Covered        | WRONG
+  [27] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [28] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [29] True: Partially Covered    | Pred: Partially Covered    | CORRECT
+  [30] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [31] True: Not Covered          | Pred: Not Covered          | CORRECT
+  [32] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [33] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [34] True: Fully Covered        | Pred: Fully Covered        | CORRECT
+  [35] True: Not Covered          | Pred: Not Covered          | CORRECT
