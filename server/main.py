@@ -1,6 +1,8 @@
 import os
 import shutil
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
 from pydantic import BaseModel
@@ -14,8 +16,7 @@ app = FastAPI(title="Parallex API")
 #  Setting up CORS 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["*"], 
-     allow_origins=["http://localhost:5173"], 
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],  
     allow_headers=["*"],
@@ -75,6 +76,34 @@ async def run_audit(request: AuditRequest):
         "total_audited": len(request.guidelines),
         "results": results
     }
+
+
+# ENDPOINT 4 to generate and download audit PDF
+@app.post("/generate-pdf")
+async def generate_pdf(request: AuditRequest):
+    """Generates a PDF report with audit results and highlighted course content."""
+    try:
+        # Generate audit results
+        results = logic.run_analysis(request.guidelines)
+        
+        # Generating PDF
+        current_date = datetime.now().strftime("%B_%d_%Y")
+        filename = f"Analysis_Report_{current_date}.pdf"
+        pdf_path = os.path.join(TEMP_DIR, filename)
+        logic.generate_audit_pdf(results, pdf_path)
+        
+        # Returning the PDF as a file download
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename=filename
+        )
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 
 if __name__ == "__main__":
     import uvicorn
