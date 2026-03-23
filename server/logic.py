@@ -24,8 +24,9 @@ embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 # llm_engine = OllamaLLM(model="llama3.2", temperature=0)
 # Using GitHub Models with OpenAI SDK
 llm_engine = ChatOpenAI(
-    model="gpt-4o-mini",
+    # model="gpt-4o-mini",
     # model="gpt-4o",
+    model="gpt-4.1-mini",
     api_key=token,  
     base_url="https://models.inference.ai.azure.com",
     temperature=0

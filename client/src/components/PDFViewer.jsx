@@ -2,36 +2,34 @@ import React from "react";
 
 export default function PDFViewer({ pdfUrl, isGenerating, onDownload }) {
   return (
-    <div className=" mt-[32px] bg-[#0e1712] border border-[#262730] rounded-lg p-[20px] font-sans">
-      <div className="flex items-center justify-between mb-[16px]">
-        <h2 className="text-[#fafafa] text-[18px]  flex items-center gap-[10px] m-0">
+    <div className="flex flex-col h-full bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden">
+      <div className="bg-[#1a3a2a] border-b border-[#262730] px-[20px] py-[16px] flex items-center justify-between">
+        <h3 className="text-[#c7dbc3] text-[14px] font-semibold uppercase tracking-wide m-0">
           📄 Audit Report PDF
-        </h2>
+        </h3>
 
         <button
-          className="bg-[#0e1712] text-[#cfd1db] border border-[#3d664d] rounded-lg p-[12px_32px] font-bold text-[16px] cursor-pointer transition-opacity-0.2s inline-flex items-center gap-[10px]"
-          onMouseEnter={(e) => (e.target.style.opacity = "0.8")}
-          onMouseLeave={(e) => (e.target.style.opacity = "1")}
+          className="bg-[#0e1712] text-[#cfd1db] border border-[#3d664d] rounded-[6px] px-[16px] py-[8px] text-[12px] cursor-pointer hover:bg-[#1a3a2a] transition-colors inline-flex items-center gap-[8px]"
           onClick={onDownload}
           disabled={!pdfUrl || isGenerating}
         >
-          {isGenerating ? "⏳ Generating..." : "⬇️ Download PDF"}
+          {isGenerating ? "⏳ Generating..." : "⬇️ Download Report"}
         </button>
       </div>
-      <div className=" w-full h-[600px] flex items-center justify-center">
+      <div className="flex-grow w-full flex items-center justify-center overflow-hidden">
         {isGenerating ? (
-          <p className=" text-[#8b8fa8] text-[14px] text-center">
+          <p className="text-[#8b8fa8] text-[14px] text-center">
             ⏳ Generating PDF report...
           </p>
         ) : pdfUrl ? (
           <iframe
-            src={pdfUrl}
-            className="w-full h-full rounded-lg border-none"
+            src={`${pdfUrl}#toolbar=0`}
+            className="w-full h-full border-none"
             title="Audit Report PDF"
           />
         ) : (
-          <p className=" text-[#8b8fa8] text-[14px] text-center">
-            Run an audit to generate the PDF report
+          <p className="text-[#8b8fa8] text-[14px] text-center">
+            PDF report will appear here
           </p>
         )}
       </div>
