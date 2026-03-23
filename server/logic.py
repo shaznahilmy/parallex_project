@@ -146,9 +146,9 @@ def run_analysis(guidelines: list):
         # Get the distance of the absolute best match
         best_match_distance = results_with_scores[0][1]
         
-        # 2. RULE-BASED ALIGNMENT LOGIC (The "Bouncer")
+        # RULE-BASED ALIGNMENT LOGIC
         if best_match_distance > DISTANCE_THRESHOLD:
-            # Short-circuit: The text is too unrelated. Don't even ask the LLM.
+            # If the text is too unrelated, don't ask the LLM
             audit_results.append({
                 "guideline": rule,
                 "match_status": "Not Covered",
@@ -212,15 +212,7 @@ def generate_audit_pdf(audit_results: list, output_path: str):
         textColor=colors.HexColor('#000000'),
         spaceAfter=6,
         fontName='Helvetica-Bold'
-    )
-    
-    date_style = ParagraphStyle(
-        'DateStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#666666'),
-        spaceAfter=12,
-    )
+    )   
     
     heading_style = ParagraphStyle(
         'CustomHeading',
