@@ -29,7 +29,7 @@ export default function ResultCard({ result }) {
 
       {open && (
         <div className="p-[16px]">
-          <p className={`text-[${color}] font-bold mb-[12px] text-[14px]`}>
+          <p className=" font-bold mb-[12px] text-[14px]" style={{ color }}>
             {label}
           </p>
           <p className="text-[#cfd1db] text-[14px] italic leading-[1.6] mb-[16px]">

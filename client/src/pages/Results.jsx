@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Footer from "../components/Footer";
@@ -15,8 +15,14 @@ export default function Results() {
   const [error, setError] = useState(null);
   const [auditProgress, setAuditProgress] = useState(0);
 
+  // hasRun prevents React StrictMode's double mount in dev which would otherwise run two api calls.
+  const hasRun = useRef(false);
+
   // Run audit and generate PDF on page load
   useEffect(() => {
+    if (hasRun.current) return; // Abort the second StrictMode call
+    hasRun.current = true;
+
     if (!guidelines || guidelines.length === 0) {
       navigate("/");
       return;
@@ -25,7 +31,7 @@ export default function Results() {
     let ticker;
 
     const runAuditAndGeneratePdf = async () => {
-      // Simulate progressive progress while running
+      // Simulating progressive progress while running
       ticker = setInterval(
         () => setAuditProgress((p) => Math.min(p + 2, 80)),
         300,
@@ -36,28 +42,37 @@ export default function Results() {
           .filter((g) => g.selected)
           .map((g) => g.text);
 
-        // Run audit first
+        // Running audit first
         const auditRes = await axios.post("http://localhost:8000/run-audit", {
           guidelines: selected,
         });
 
-        // Set audit results
+        // Setting audit results
         setAuditResults(auditRes.data.results);
         setAuditProgress(50);
 
-        // Then generate PDF
+        // Generating the audit PDF
         const pdfRes = await axios.post(
           "http://localhost:8000/generate-pdf",
           { guidelines: selected },
-          { responseType: "blob" },
         );
 
-        // Create PDF blob URL
-        const pdfBlob = new Blob([pdfRes.data], { type: "application/pdf" });
+        if (pdfRes.data.status === "error") {
+          throw new Error(pdfRes.data.message || "PDF generation failed");
+        }
+
+        // Decoding the base64 string
+        const b64 = pdfRes.data.pdf_base64;
+        const binaryStr = atob(b64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const pdfBlob = new Blob([bytes], { type: "application/pdf" });
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfUrl(pdfUrl);
 
-        // Store blob for download
+        // Keeping the blob on window so the download button can re-use it
         window.auditPdfBlob = pdfBlob;
 
         clearInterval(ticker);
