@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Footer from "../components/Footer";
 import UploadZone from "../components/UploadZone";
-import ResultCard from "../components/ResultCard";
-import PDFViewer from "../components/PDFViewer";
 
 export default function Home() {
+  const navigate = useNavigate();
   const [guidelines, setGuidelines] = useState([]);
   const [isUploadingGuide, setIsUploadingGuide] = useState(false);
   const [guideMessage, setGuideMessage] = useState("");
@@ -16,12 +16,23 @@ export default function Home() {
   const [contentFileName, setContentFileName] = useState("");
   const [isContentReady, setIsContentReady] = useState(false);
 
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [auditProgress, setAuditProgress] = useState(0);
-  const [auditResults, setAuditResults] = useState(null);
 
-  const [pdfUrl, setPdfUrl] = useState(null);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Typing effect state
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const typingText = "Hi! Welcome to Parallex 👋";
+
+  useEffect(() => {
+    if (currentIndex < typingText.length) {
+      const timer = setTimeout(() => {
+        setDisplayedText((prev) => prev + typingText[currentIndex]);
+        setCurrentIndex((prev) => prev + 1);
+      }, 80);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex]);
 
   /* ── Uploads ── */
   const handleGuidelineUpload = async (e) => {
@@ -31,7 +42,6 @@ export default function Home() {
     setIsUploadingGuide(true);
     setGuideMessage("⏳ Extracting guidelines...");
     setGuidelines([]);
-    setAuditResults(null);
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -89,71 +99,13 @@ export default function Home() {
       alert("Select at least one guideline.");
       return;
     }
-    setIsAuditing(true);
-    setAuditResults(null);
-    setPdfUrl(null);
-    setAuditProgress(0);
-
-    // Simulate progressive progress while waiting
-    const ticker = setInterval(
-      () => setAuditProgress((p) => Math.min(p + 2, 90)),
-      300,
-    );
-    try {
-      const res = await axios.post("http://localhost:8000/run-audit", {
-        guidelines: selected,
-      });
-      clearInterval(ticker);
-      setAuditProgress(100);
-      setAuditResults(res.data.results);
-
-      // Automatically generate PDF after audit
-      await generateAuditPdf(selected);
-    } catch (err) {
-      clearInterval(ticker);
-      console.error(err);
-      alert("Failed to run audit. Check backend terminal.");
-    } finally {
-      setIsAuditing(false);
-    }
-  };
-
-  /* ── Generate PDF ── */
-  const generateAuditPdf = async (guidelines) => {
-    setIsGeneratingPdf(true);
-    try {
-      const res = await axios.post(
-        "http://localhost:8000/generate-pdf",
-        { guidelines },
-        { responseType: "blob" },
-      );
-
-      // Create a blob URL for the PDF
-      const pdfBlob = new Blob([res.data], { type: "application/pdf" });
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      setPdfUrl(pdfUrl);
-
-      // Store blob for download
-      window.auditPdfBlob = pdfBlob;
-    } catch (err) {
-      console.error("Failed to generate PDF:", err);
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
-
-  /* ── Download PDF ── */
-  const handlePdfDownload = () => {
-    if (window.auditPdfBlob) {
-      const url = URL.createObjectURL(window.auditPdfBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "audit_report.pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    
+    // Navigate to results page immediately with guidelines
+    navigate("/results", {
+      state: {
+        guidelines,
+      },
+    });
   };
 
   const selectedCount = guidelines.filter((g) => g.selected).length;
@@ -179,11 +131,24 @@ export default function Home() {
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-grow max-w-5xl mx-auto w-full py-8 pl-[32px] pr-[32px]">
-        {/* ── Intro ── */}
+        {/* ── Typing Effect Header ── */}
+        <h2 className="text-[36px] font-bold text-white mb-[4px] min-h-[40px]">
+          {displayedText}
+          {currentIndex < typingText.length && (
+            <span className="animate-pulse">|</span>
+          )}
+        </h2>
+
+        {/* ── Intro Text ── */}
+        <p className="text-white mb-[16px] text-base font-medium">
+          Upload your curriculum guidelines and course content to check
+          alignment.
+        </p>
         <p className="text-white mb-[28px] text-sm">
-          Upload your <strong>Guidelines</strong> first — review &amp; select
-          the rules you want checked — then upload your{" "}
-          <strong>Course Content</strong> and run the audit.
+          Start by uploading your <strong>Guidelines</strong> (Syllabus /
+          Standards), review &amp; select the rules you want checked, then
+          upload your <strong>Course Content</strong> and click "Check
+          Alignment" to run the audit.
         </p>
 
         {/* ── Step 1: Guidelines Upload ── */}
@@ -195,7 +160,7 @@ export default function Home() {
           <UploadZone
             label="Drop Guideline PDF"
             onChange={handleGuidelineUpload}
-            disabled={isUploadingGuide || auditResults !== null}
+            disabled={isUploadingGuide}
             message={guideMessage}
             fileName={guideFileName}
           />
@@ -265,7 +230,7 @@ export default function Home() {
             <UploadZone
               label="Drop Lecture PDF"
               onChange={handleContentUpload}
-              disabled={isUploadingContent || auditResults !== null}
+              disabled={isUploadingContent}
               message={contentMessage}
               fileName={contentFileName}
             />
@@ -277,47 +242,10 @@ export default function Home() {
           <div className="my-[24px] flex justify-center">
             <button
               onClick={runAlignmentAudit}
-              disabled={isAuditing || auditResults !== null}
-              className="border border-[#3d664d] rounded-[6px] bg-[#0e1712] text-[#cfd1db] px-[32px] py-[12px] font-bold text-[16px] inline-flex items-center gap-[10px] disabled:opacity-70 disabled:cursor-not-allowed"
+              className="border border-[#3d664d] rounded-[6px] bg-[#0e1712] text-[#cfd1db] px-[32px] py-[12px] font-bold text-[16px] inline-flex items-center gap-[10px] hover:bg-[#1a3a2a] transition-colors"
             >
-              {isAuditing ? "🔄 Analysing ..." : "🚀 Check Alignment"}
+              🚀 Check Alignment
             </button>
-          </div>
-        )}
-
-        {/* ── Progress Bar (while auditing) ── */}
-        {isAuditing && (
-          <div className="h-[4px] bg-[#262730] rounded-[2px] my-[16px]">
-            <div
-              className="h-full bg-[#748b75] rounded-[2px] transition-all duration-300 ease-in-out"
-              style={{ width: `${auditProgress}%` }}
-            />
-          </div>
-        )}
-
-        {/* ── Audit Results ── */}
-        {auditResults && (
-          <div className="mt-[36px]">
-            <div className="border-t border-[#262730] my-[32px]" />
-            <p className="text-[#fafafa] text-[22px] font-bold mb-1 flex items-center gap-2">
-              <span>📄</span> Analysis
-            </p>
-
-            <div className="mt-[16px]">
-              {auditResults.map((result, i) => (
-                <ResultCard key={i} result={result} index={i} />
-              ))}
-            </div>
-            <p className="text-[#21c45d] font-semibold text-[14px] mt-[16px]">
-              ✅ Analysis Complete!
-            </p>
-
-            {/* PDF Viewer below results */}
-            <PDFViewer
-              pdfUrl={pdfUrl}
-              isGenerating={isGeneratingPdf}
-              onDownload={handlePdfDownload}
-            />
           </div>
         )}
       </main>

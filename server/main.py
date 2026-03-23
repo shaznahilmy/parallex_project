@@ -1,10 +1,10 @@
 import os
+import base64
 import shutil
+import traceback
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_community.document_loaders import PyPDFLoader
 from pydantic import BaseModel
 from typing import List
 
@@ -78,27 +78,36 @@ async def run_audit(request: AuditRequest):
     }
 
 
-# ENDPOINT 4 to generate and download audit PDF
+# ENDPOINT 4 to generate the audit PDF and return it as a base64-encoded JSON string.
+# Using base64 (instead of a binary FileResponse) means:
+#   Errors are always clean JSON — never accidentally parsed as a corrupt PDF blob
+#   The client can check "status" before attempting to decode
 @app.post("/generate-pdf")
 async def generate_pdf(request: AuditRequest):
-    """Generates a PDF report with audit results and highlighted course content."""
+    """Runs the audit, generates the PDF, and returns it base64-encoded inside JSON."""
     try:
-        # Generate audit results
+        # Run the analysis (FAISS retrieval + LLM grading)
         results = logic.run_analysis(request.guidelines)
-        
-        # Generating PDF
+
+        # Write the PDF to a temp file
         current_date = datetime.now().strftime("%B_%d_%Y")
         filename = f"Analysis_Report_{current_date}.pdf"
         pdf_path = os.path.join(TEMP_DIR, filename)
         logic.generate_audit_pdf(results, pdf_path)
-        
-        # Returning the PDF as a file download
-        return FileResponse(
-            pdf_path,
-            media_type="application/pdf",
-            filename=filename
-        )
+
+        # Read the file and base64-encode it so it travels safely as JSON
+        with open(pdf_path, "rb") as f:
+            pdf_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        return {
+            "status": "success",
+            "filename": filename,
+            "pdf_base64": pdf_b64
+        }
+
     except Exception as e:
+        # Print the full traceback to the server terminal so you can debug easily
+        traceback.print_exc()
         return {
             "status": "error",
             "message": str(e)
