@@ -99,22 +99,13 @@ export default function Home() {
       alert("Select at least one guideline.");
       return;
     }
-    try {
-      const res = await axios.post("http://localhost:8000/run-audit", {
-        guidelines: selected,
-      });
-
-      // Navigate to results page with guidelines and audit results
-      navigate("/results", {
-        state: {
-          guidelines,
-          auditResults: res.data.results,
-        },
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Failed to run audit. Check backend terminal.");
-    }
+    
+    // Navigate to results page immediately with guidelines
+    navigate("/results", {
+      state: {
+        guidelines,
+      },
+    });
   };
 
   const selectedCount = guidelines.filter((g) => g.selected).length;

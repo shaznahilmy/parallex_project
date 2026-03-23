@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function PDFViewer({ pdfUrl, isGenerating, onDownload }) {
   return (
     <div className="flex flex-col h-full bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden">
@@ -17,21 +15,11 @@ export default function PDFViewer({ pdfUrl, isGenerating, onDownload }) {
         </button>
       </div>
       <div className="flex-grow w-full flex items-center justify-center overflow-hidden">
-        {isGenerating ? (
-          <p className="text-[#8b8fa8] text-[14px] text-center">
-            ⏳ Generating PDF report...
-          </p>
-        ) : pdfUrl ? (
-          <iframe
-            src={`${pdfUrl}#toolbar=0`}
-            className="w-full h-full border-none"
-            title="Audit Report PDF"
-          />
-        ) : (
-          <p className="text-[#8b8fa8] text-[14px] text-center">
-            PDF report will appear here
-          </p>
-        )}
+        <iframe
+          src={`${pdfUrl}#toolbar=0`}
+          className="w-full h-full border-none"
+          title="Audit Report PDF"
+        />
       </div>
     </div>
   );
