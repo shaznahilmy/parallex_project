@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Footer from "../components/Footer";
 import UploadZone from "../components/UploadZone";
+import NavBar from "../components/NavBar";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -34,13 +35,13 @@ export default function Home() {
     }
   }, [currentIndex]);
 
-  /* ── Uploads ── */
+  /*  Uploads  */
   const handleGuidelineUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setGuideFileName(file.name);
     setIsUploadingGuide(true);
-    setGuideMessage("⏳ Extracting guidelines...");
+    setGuideMessage(" Extracting guidelines...");
     setGuidelines([]);
     const formData = new FormData();
     formData.append("file", file);
@@ -82,7 +83,7 @@ export default function Home() {
     }
   };
 
-  /* ── Guideline picker ── */
+  /*  Guideline picker  */
   const toggleSelection = (id) =>
     setGuidelines((gs) =>
       gs.map((g) => (g.id === id ? { ...g, selected: !g.selected } : g)),
@@ -92,7 +93,7 @@ export default function Home() {
   const setAll = (v) =>
     setGuidelines((gs) => gs.map((g) => ({ ...g, selected: v })));
 
-  /* ── Run Audit ── */
+  /*  Run Audit  */
   const runAlignmentAudit = async () => {
     const selected = guidelines.filter((g) => g.selected).map((g) => g.text);
     if (!selected.length) {
@@ -112,26 +113,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans pl-[20px] pr-[60px] py-5">
-      {/* --- NAVBAR --- */}
-      <div className="bg-[#0e1712] border-b-1 border-[#262730] pl-[30px] pr-[20px]">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-[-0.5px]">
-              🎓 Parallex:{" "}
-              <span className="text-[#c7dbc3]">
-                Automated Curriculum Auditor
-              </span>
-            </h1>
-            <p className="text-sm text-white">
-              Cross-Document Semantic Analysis System
-            </p>
-          </div>
-        </div>
-      </div>
+     
+      <NavBar/>
 
-      {/* --- MAIN CONTENT --- */}
+      {/*  MAIN CONTENT  */}
       <main className="flex-grow max-w-5xl mx-auto w-full py-8 pl-[32px] pr-[32px]">
-        {/* ── Typing Effect Header ── */}
+        {/*  Typing Effect Header  */}
         <h2 className="text-[36px] font-bold text-white mb-[4px] min-h-[40px]">
           {displayedText}
           {currentIndex < typingText.length && (
@@ -139,7 +126,7 @@ export default function Home() {
           )}
         </h2>
 
-        {/* ── Intro Text ── */}
+        {/*  Intro Text  */}
         <p className="text-white mb-[16px] text-base font-medium">
           Upload your curriculum guidelines and course content to check
           alignment.
@@ -151,10 +138,10 @@ export default function Home() {
           Alignment" to run the audit.
         </p>
 
-        {/* ── Step 1: Guidelines Upload ── */}
+        {/*  Step 1: Guidelines Upload  */}
         <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] p-[20px]">
           <div className="bg-[#1a3a2a] border-l-[4px] border-l-[#3a645a] rounded-[6px] mb-[12px] px-[16px] py-[12px] text-white font-semibold text-[14px]">
-            📋 Step 1: Upload Guidelines{" "}
+             Step 1: Upload Guidelines{" "}
             <span className="font-[400]">(Syllabus / Standards)</span>
           </div>
           <UploadZone
@@ -166,12 +153,12 @@ export default function Home() {
           />
         </div>
 
-        {/* ── Step 2: Review & Select Guidelines ── */}
+        {/*  Step 2: Review & Select Guidelines  */}
         {guidelines.length > 0 && (
           <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] p-[20px] mt-[20px]">
             <div className="flex justify-between items-center mb-[12px]">
               <div className="bg-[#1a3a2a] border-l-[4px] border-l-[#3a645a] rounded-[6px] mb-[12px] px-[16px] py-[12px] text-white font-semibold text-[14px]">
-                📝 Step 2: Review Guidelines{" "}
+                 Step 2: Review Guidelines{" "}
                 <span className="text-[13px] text-white font-[500]">
                   {selectedCount} / {guidelines.length} selected
                 </span>{" "}
@@ -220,11 +207,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Step 3: Upload Content (shown after guidelines are loaded) ── */}
+
         {guidelines.length > 0 && (
           <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] p-[20px] mt-[20px]">
             <div className="bg-[#1a3a2a] border-l-[4px] border-l-[#3a645a] rounded-[6px] mb-[12px] px-[16px] py-[12px] text-white font-semibold text-[14px]">
-              📂 Step 3: Upload Course Content{" "}
+               Step 3: Upload Course Content{" "}
               <span className="font-normal">(Lecture Notes)</span>
             </div>
             <UploadZone
@@ -236,15 +223,14 @@ export default function Home() {
             />
           </div>
         )}
-
-        {/* ── Step 4: Run Audit Button ── */}
+     
         {guidelines.length > 0 && isContentReady && (
           <div className="my-[24px] flex justify-center">
             <button
               onClick={runAlignmentAudit}
               className="border border-[#3d664d] rounded-[6px] bg-[#0e1712] text-[#cfd1db] px-[32px] py-[12px] font-bold text-[16px] inline-flex items-center gap-[10px] hover:bg-[#1a3a2a] transition-colors"
             >
-              🚀 Check Alignment
+               Check Alignment
             </button>
           </div>
         )}

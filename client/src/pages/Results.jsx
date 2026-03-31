@@ -4,6 +4,7 @@ import axios from "axios";
 import Footer from "../components/Footer";
 import ResultCard from "../components/ResultCard";
 import PDFViewer from "../components/PDFViewer";
+import NavBar from "../components/NavBar";
 
 export default function Results() {
   const location = useLocation();
@@ -42,26 +43,20 @@ export default function Results() {
           .filter((g) => g.selected)
           .map((g) => g.text);
 
-        // Running audit first
-        const auditRes = await axios.post("http://localhost:8000/run-audit", {
-          guidelines: selected,
-        });
-
-        // Setting audit results
-        setAuditResults(auditRes.data.results);
-        setAuditProgress(50);
-
-        // Generating the audit PDF
+        // Single API call to generate pdf and for the audit results     
         const pdfRes = await axios.post(
           "http://localhost:8000/generate-pdf",
           { guidelines: selected },
         );
 
         if (pdfRes.data.status === "error") {
-          throw new Error(pdfRes.data.message || "PDF generation failed");
+          throw new Error(pdfRes.data.message || "Audit failed");
         }
 
-        // Decoding the base64 string
+        // Populating the left panel from the same response
+        setAuditResults(pdfRes.data.results);
+
+        // Decoding the base64 PDF and populate the right panel
         const b64 = pdfRes.data.pdf_base64;
         const binaryStr = atob(b64);
         const bytes = new Uint8Array(binaryStr.length);
@@ -108,32 +103,12 @@ export default function Results() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans pl-[20px] pr-[60px] py-5">
-      {/* --- NAVBAR --- */}
-      <div className="bg-[#0e1712] border-b-1 border-[#262730] pl-[30px] pr-[20px]">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-[-0.5px]">
-              🎓 Parallex:{" "}
-              <span className="text-[#c7dbc3]">
-                Automated Curriculum Auditor
-              </span>
-            </h1>
-            <p className="text-sm text-white">
-              Cross-Document Semantic Analysis System
-            </p>
-          </div>
-          <button
-            onClick={() => navigate("/")}
-            className="text-[#cfd1db] border border-[#3d664d] rounded-[6px] px-[16px] py-[8px] text-[12px] cursor-pointer bg-[#0a311e] hover:transparent"
-          >
-            ← New Audit
-          </button>
-        </div>
-      </div>
 
-      {/* --- MAIN CONTENT --- */}
+      <NavBar />
+
+      {/*  MAIN CONTENT  */}
       <main className="flex-grow w-full py-8 px-[32px]">
-        {/* ── Progress Bar (while loading) ── */}
+        {/*  Progress Bar  */}
         {isLoading && (
           <div className="max-w-full mx-auto mb-8">
             <p className="text-[#fafafa] text-[20px] pt-[10px] font-medium mb-2 flex items-center gap-2">
@@ -159,7 +134,7 @@ export default function Results() {
         {auditResults && (
           <div className="max-w-full mx-auto flex flex-col h-full">
             <h2 className="text-[#fafafa] text-[22px] font-bold mb-6 flex items-center gap-2">
-              <span>✅</span> Analysis Results
+               Analysis Results
             </h2>
 
             <div className="grid grid-cols-2 gap-[24px] flex-1">

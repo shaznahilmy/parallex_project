@@ -1,16 +1,20 @@
 import os
 import base64
-import shutil
+#to save uploaded files
+import shutil 
 import traceback
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
+#allows fe to call be
 from fastapi.middleware.cors import CORSMiddleware
+#validates incoming json
 from pydantic import BaseModel
+#for type hinting
 from typing import List
 
 from server import logic
 
-#  Initialising app
+#  Initialising app (creates API server)
 app = FastAPI(title="Parallex API")
 
 #  Setting up CORS 
@@ -68,7 +72,8 @@ async def upload_content(file: UploadFile = File(...)):
 # ENDPOINT 3 to run the comparison
 @app.post("/run-audit")
 async def run_audit(request: AuditRequest):
-    # Passing the JSON list of guidelines into LLaMA 
+    # Passing the JSON list of guidelines into LLM
+    #returns match status, reasonining, quote and score
     results = logic.run_analysis(request.guidelines)
     
     return {
@@ -78,13 +83,12 @@ async def run_audit(request: AuditRequest):
     }
 
 
-# ENDPOINT 4 to generate the audit PDF and return it as a base64-encoded JSON string.
+# ENDPOINT 4 to generate the audit PDF and return it as a base64-encoded JSON string and the results
 # Using base64 (instead of a binary FileResponse) means:
 #   Errors are always clean JSON — never accidentally parsed as a corrupt PDF blob
 #   The client can check "status" before attempting to decode
 @app.post("/generate-pdf")
 async def generate_pdf(request: AuditRequest):
-    """Runs the audit, generates the PDF, and returns it base64-encoded inside JSON."""
     try:
         # Run the analysis (FAISS retrieval + LLM grading)
         results = logic.run_analysis(request.guidelines)
@@ -95,18 +99,19 @@ async def generate_pdf(request: AuditRequest):
         pdf_path = os.path.join(TEMP_DIR, filename)
         logic.generate_audit_pdf(results, pdf_path)
 
-        # Read the file and base64-encode it so it travels safely as JSON
+        # Read the file and base64 encode it so it travels safely as JSON
         with open(pdf_path, "rb") as f:
             pdf_b64 = base64.b64encode(f.read()).decode("utf-8")
 
         return {
             "status": "success",
             "filename": filename,
-            "pdf_base64": pdf_b64
+            "results": results,       # structured audit results for the left panel
+            "pdf_base64": pdf_b64     # encoded PDF for the right panel
         }
 
     except Exception as e:
-        # Print the full traceback to the server terminal so you can debug easily
+        # Print the full traceback to the server terminal so can debug easily
         traceback.print_exc()
         return {
             "status": "error",

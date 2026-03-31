@@ -11,7 +11,7 @@ export default function PDFViewer({ pdfUrl, isGenerating, onDownload }) {
           onClick={onDownload}
           disabled={!pdfUrl || isGenerating}
         >
-          {isGenerating ? "⏳ Generating..." : "⬇️ Download Report"}
+          {isGenerating ? "Generating..." : "Download Report"}
         </button>
       </div>
       <div className="flex-grow w-full flex items-center justify-center overflow-hidden">

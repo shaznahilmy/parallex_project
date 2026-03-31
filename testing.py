@@ -221,11 +221,11 @@ for pair in TEST_PAIRS:
             y_true.append(expected)
             y_pred.append(predicted)
 
-            status_icon = "✅" if predicted == expected else "❌"
-            print(f"  {status_icon} [{i+1}] Expected: '{expected}' | Got: '{predicted}'")
+            
+            print(f" [{i+1}] Expected: '{expected}' | Got: '{predicted}'")
 
     except Exception as e:
-        print(f"  ❌ Error on pair {pair_id}: {e}")
+        print(f" Error on pair {pair_id}: {e}")
         failed_pairs.append(pair_id)
 
 
@@ -270,7 +270,7 @@ else:
             match = "CORRECT" if t == p else "WRONG"
             f.write(f"  [{i+1}] True: {t:20} | Pred: {p:20} | {match}\n")
 
-    print("\n✅ Results saved to file")
+    print("\n Results saved to file")
 
 
 
