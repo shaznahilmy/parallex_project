@@ -14,7 +14,6 @@ export default function Results() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [auditProgress, setAuditProgress] = useState(0);
 
   // hasRun prevents React StrictMode's double mount in dev which would otherwise run two api calls.
   const hasRun = useRef(false);
@@ -29,25 +28,16 @@ export default function Results() {
       return;
     }
 
-    let ticker;
-
     const runAuditAndGeneratePdf = async () => {
-      // Simulating progressive progress while running
-      ticker = setInterval(
-        () => setAuditProgress((p) => Math.min(p + 2, 80)),
-        300,
-      );
-
       try {
         const selected = guidelines
           .filter((g) => g.selected)
           .map((g) => g.text);
 
-        // Single API call to generate pdf and for the audit results     
-        const pdfRes = await axios.post(
-          "http://localhost:8000/generate-pdf",
-          { guidelines: selected },
-        );
+        // Single API call to generate pdf and for the audit results
+        const pdfRes = await axios.post("http://localhost:8000/generate-pdf", {
+          guidelines: selected,
+        });
 
         if (pdfRes.data.status === "error") {
           throw new Error(pdfRes.data.message || "Audit failed");
@@ -67,25 +57,18 @@ export default function Results() {
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfUrl(pdfUrl);
 
-        // Keeping the blob on window so the download button can re-use it
+        // Keeping the blob on window so the download button can reuse it
         window.auditPdfBlob = pdfBlob;
 
-        clearInterval(ticker);
-        setAuditProgress(100);
         setIsLoading(false);
       } catch (err) {
         console.error("Failed to run audit:", err);
         setError("Failed to run audit. Check backend terminal.");
-        clearInterval(ticker);
         setIsLoading(false);
       }
     };
 
     runAuditAndGeneratePdf();
-
-    return () => {
-      if (ticker) clearInterval(ticker);
-    };
   }, [guidelines, navigate]);
 
   const handlePdfDownload = () => {
@@ -102,78 +85,102 @@ export default function Results() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans pl-[20px] pr-[60px] py-5">
+    <>
+      <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans py-5">
+        <NavBar />
 
-      <NavBar />
-
-      {/*  MAIN CONTENT  */}
-      <main className="flex-grow w-full py-8 px-[32px]">
-        {/*  Progress Bar  */}
-        {isLoading && (
-          <div className="max-w-full mx-auto mb-8">
-            <p className="text-[#fafafa] text-[20px] pt-[10px] font-medium mb-2 flex items-center gap-2">
-              <span className="animate-spin">🔄</span> Running Analysis...
-            </p>
-            <div className="h-[4px] bg-[#262730] rounded-[2px] overflow-hidden">
-              <div
-                className="h-full bg-[#748b75] rounded-[2px] transition-all duration-300 ease-in-out"
-                style={{ width: `${auditProgress}%` }}
-              />
+        <main className="flex-grow mx-[16px] py-8">
+          {/* yellow is ipad mini, normal and ipad pro is green */}
+          {/* <div className="text-white sm:text-red-400 md:text-yellow-400 lg:text-green-400">
+            breakpoint test
+          </div> */}
+          {/*  Progress Bar  */}
+          {isLoading && (
+            <div className="max-w-full mx-auto mb-8">
+              <style>{`
+              @keyframes audit-scan {
+                0%   { transform: translateX(-100%); }
+                100% { transform: translateX(520%); }
+              }
+            `}</style>
+              <p className="text-[#fafafa] text-[20px] pt-[10px] font-medium mb-3 flex items-center gap-2">
+                Running Analysis...
+              </p>
+              <div className="h-[4px] bg-[#262730] rounded-[2px] overflow-hidden relative">
+                <div
+                  className="absolute h-full bg-[#748b75] rounded-[2px]"
+                  style={{
+                    width: "20%",
+                    animation: "audit-scan 1.8s ease-in-out infinite",
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {error && (
-          <div className="max-w-7xl mx-auto mb-6">
-            <div className="bg-red-900/20 border border-red-700 rounded-[8px] p-[20px]">
-              <p className="text-red-400 text-[14px]">{error}</p>
+          {error && (
+            <div className="max-w-7xl mx-auto mb-6">
+              <div className="bg-red-900/20 border border-red-700 rounded-[8px] p-[20px]">
+                <p className="text-red-400 text-[14px]">{error}</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {auditResults && (
-          <div className="max-w-full mx-auto flex flex-col h-full">
-            <h2 className="text-[#fafafa] text-[22px] font-bold mb-6 flex items-center gap-2">
-               Analysis Results
-            </h2>
+          {auditResults && (
+            <div className="w-full">
+              <div className="w-full  mx-auto">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-[#fafafa] text-[22px] font-bold">
+                    Analysis Results
+                  </h2>
 
-            <div className="grid grid-cols-2 gap-[24px] flex-1">
-              {/* Results List on the left */}
-              <div className="flex flex-col h-full">
-                <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden flex flex-col flex-1">
-                  <div className="bg-[#1a3a2a] border-b border-[#262730] px-[20px] py-[16px]">
-                    <h3 className="text-[#c7dbc3] text-[14px] font-semibold uppercase tracking-wide">
-                      Analysis Results ({auditResults.length})
-                    </h3>
+                  <button
+                    onClick={() => navigate("/")}
+                    className="shrink-0 text-[#cfd1db] border border-[#3d664d] rounded-[6px] px-[32px] py-[8px] text-[14px] bg-[#0a311e] font-semibold"
+                  >
+                    New Audit
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-[20px] w-full">
+                  {/* Results List on the left */}
+                  <div className="flex flex-col h-[500px] lg:h-[600px] min-w-0">
+                    <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden flex flex-col flex-1">
+                      <div className="bg-[#1a3a2a] border-b border-[#262730] px-[20px] py-[16px]">
+                        <h3 className="text-[#c7dbc3] text-[14px] font-semibold uppercase tracking-wide">
+                          Analysis Results ({auditResults.length})
+                        </h3>
+                      </div>
+
+                      {/* Results Container */}
+                      <div className="bg-[#1a3a2a] overflow-y-auto flex-1 px-[20px] py-[16px]">
+                        <div className="space-y-[16px]">
+                          {auditResults.map((result, i) => (
+                            <ResultCard key={i} result={result} index={i} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Results Container */}
-                  <div className="bg-[#1a3a2a] overflow-y-auto flex-grow px-[20px] py-[16px]">
-                    <div className="space-y-[16px]">
-                      {auditResults.map((result, i) => (
-                        <ResultCard key={i} result={result} index={i} />
-                      ))}
+                  {/* PDF Viewer on the right */}
+                  <div className="flex flex-col h-[500px] lg:h-[600px] min-w-0">
+                    <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden flex flex-col flex-1">
+                      <PDFViewer
+                        pdfUrl={pdfUrl}
+                        isGenerating={isLoading}
+                        onDownload={handlePdfDownload}
+                      />
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* PDF Viewer on the right */}
-              <div className="flex flex-col h-full">
-                <div className="bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden flex flex-col flex-1">
-                  <PDFViewer
-                    pdfUrl={pdfUrl}
-                    isGenerating={isLoading}
-                    onDownload={handlePdfDownload}
-                  />
-                </div>
-              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
 
       <Footer />
-    </div>
+    </>
   );
 }

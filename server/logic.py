@@ -2,7 +2,7 @@ import os
 import io
 import re
 import torch
-import fitz  # PyMuPDF is used for native PDF highlighting and merging
+import fitz  # PyMuPDF is used for PDF highlighting and merging
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -14,7 +14,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 
-# Reportlab is only used to build the summary page (page 1 of the final report)
+# Reportlab is only used to build the summary page 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -55,12 +55,11 @@ llm_engine = ChatOpenAI(
     temperature=0
 )
 
-#  Global State 
 # Path to the FAISS vector index saved during upload
 FAISS_INDEX_PATH = "temp/faiss_index"
 
-# Path to the original course PDF uploaded by the user.
-# Saved during upload so that generate_audit_pdf() can open and annotate it later.
+# Path to the original course PDF uploaded by the user
+# Saved during upload so that generate_audit_pdf() can open and highlight it later
 COURSE_PDF_PATH = ""
 
 #  Advocate Prompt 
@@ -182,9 +181,9 @@ def _extract_text_with_fitz(pdf_path: str) -> list:
     return documents
 
 
-# Loads a guidelines PDF and uses the LLM to extract a clean list of learning objectives.
+# Loads a guidelines PDF and uses the LLM to extract a list of learning objectives
 def extract_guidelines(pdf_path):
-    # Use fitz so the whole pipeline uses one PDF library
+    # Using fitz instead of pyPDFLoader
     pages = _extract_text_with_fitz(pdf_path)
 
     # Combine every page into one string for the LLM to process
@@ -214,18 +213,18 @@ def extract_guidelines(pdf_path):
 def build_and_save_faiss(pdf_path):
     global COURSE_PDF_PATH
 
-    # Extract text using fitz — same engine as search_for() used during highlighting,
-    # so the indexed text and the PDF text layer are guaranteed to be consistent.
+    # Extract text using fitz, same engine as search_for() used during highlighting
+    # so the indexed text and the PDF text layer are guaranteed to be consistent
     docs = _extract_text_with_fitz(pdf_path)
 
-    # Remembering where the original PDF lives as it's needed by generate_audit_pdf()
+    # Remembering where the original PDF lives as its needed to generate the audit report
     COURSE_PDF_PATH = pdf_path
 
-    # Splitting the document into 500-char chunks with 50-char overlap for better context capture
+    # Splitting the document into 500 char chunks with 50 char overlap
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
-    # Building the FAISS index and persisting it so run_analysis() can load it without re-embedding
+    # Building the FAISS index and persisting it so run_analysis() can load it without re embedding
     vector_db = FAISS.from_documents(chunks, embedding_model)
     vector_db.save_local(FAISS_INDEX_PATH)
     return True
@@ -319,15 +318,30 @@ def run_analysis(guidelines: list):
         # Combine the retrieved chunks into a single context string for the LLM
         context_text = "\n".join([doc.page_content for doc, score in results_with_scores])
 
-        # NLI entailment score — run BEFORE the LLM calls so it is independent.
-        # premise  = what the course content actually says (retrieved chunks)
-        # hypothesis = the guideline that should have been taught
-        # Returns P(entailment) ∈ [0.0, 1.0] from cross-encoder/nli-roberta-base
-        entailment_score = _compute_entailment_score(context_text, rule)
+        """
+        Normalise whitespace in the context before passing to the LLM.
+        fitz.get_text() inserts \n at every line end, so a phrase spanning two
+        lines in the PDF becomes "word1\nword2" in the extracted text. If the LLM
+        quotes that phrase it may write "word1 word2" (natural space), and
+        search_for() won't find it because the original PDF has a line-break there.
+        Collapsing all whitespace runs to a single space means the LLM's quote
+        and search_for() are working with the same normalised representation.
+        """
+        context_text_for_llm = " ".join(context_text.split())
+
+        """
+        NLI entailment score that runs before the LLM calls so it is independent.
+        Use the normalised context so the NLI text matches what we give the LLM
+        """
+        entailment_score = _compute_entailment_score(context_text_for_llm, rule)
         print(f"[NLI] P(entailment) for \"{rule[:55]}...\": {entailment_score}")
-        # Asks the LLM to assess coverage, provide an exact quote, and score
-        # the depth of teaching across 3 rubric dimensions.
-        final_prompt = prompt.format(guideline=rule, context=context_text)
+        
+        """
+        The Advocate LLM  
+        Asks the LLM to assess coverage, provide an exact quote, and score
+        the depth of teaching across 3 rubrics
+        """
+        final_prompt = prompt.format(guideline=rule, context=context_text_for_llm)
         response = llm_engine.invoke(final_prompt).content
 
         # Parsing the structured Advocate response line by line
@@ -353,12 +367,15 @@ def run_analysis(guidelines: list):
             elif line.startswith("Criterion-3"):
                 criterion_3 = 1 if "1" in line.split(":")[-1] else 0
 
-        # Drift score is calculated AFTER the adversary runs (below),
-        # so it correctly reflects the final match_status, not the Advocate's initial claim.
+        """
+        Drift score is calculated after the adversary runs (below)
+        so it correctly reflects the final match_status, not the Advocate's initial claim.
+        """
 
-        # The Adversary LLM 
-        # Only fires when the Advocate claims coverage (Fully or Partially).
-        # Cross-examines the reasoning to catch false positives and over-generous verdicts.
+        """
+        The Adversary LLM 
+        Only runs when the Advocate claims coverage      
+        """
         adversary_verdict = "N/A"
         adversary_reason = ""
 
@@ -380,8 +397,7 @@ def run_analysis(guidelines: list):
                 elif line.startswith("Reason:"):
                     adversary_reason = line.replace("Reason:", "").strip()
 
-            # One-step demotion if the Adversary found a flaw:
-            # Fully Covered → Partially Covered, Partially Covered → Not Covered
+            # One-step demotion if the Adversary found a flaw, fully to partial and partial to not covered       
             if adversary_verdict == "DOWNGRADED":
                 print(f"[ADVERSARY] DOWNGRADED — {adversary_reason}")
                 if "Fully Covered" in match_status:
@@ -391,22 +407,22 @@ def run_analysis(guidelines: list):
             else:
                 print(f"[ADVERSARY] UPHELD — {adversary_reason}")
 
-        # Weighted NLI Score — computed after the Adversary finalises match_status.
-        #
-        # Weights are calibrated to reflect actual signal quality in this domain:
-        #   NLI entailment (0.2): cross-encoder/nli-roberta-base was trained on short
-        #                          sentence pairs (MultiNLI/SNLI). Applied to chunked
-        #                          course content vs formal academic guidelines, it
-        #                          consistently scores 1–10% regardless of true coverage
-        #                          due to register mismatch. Treated as a weak tiebreaker.
-        #   Coverage label  (0.5): dual-agent LLM verdict — most reliable signal.
-        #                          Fully=1.0, Partially=0.5, Not Covered=0.0
-        #   Rubric depth    (0.3): quality of teaching (concept + mechanism + example).
-        #
-        # These weights produce intuitive ranges:
-        #   Fully Covered + all rubric criteria met  → ~80%
-        #   Partially Covered + all rubric criteria  → ~55–57%
-        #   Not Covered                              → ~1–5%
+        """
+        Weighted NLI Score computed after the Adversary finalises match_status.
+        Weights are calibrated to reflect actual signal quality in this domain:
+        NLI entailment (0.2): cross-encoder/nli-roberta-base was trained on short
+        sentence pairs (MultiNLI/SNLI). Applied to chunked
+        course content vs guidelines, it consistently scores 1–10% regardless of true coverage
+        due to register mismatch. Treated as a weak tiebreaker.
+        Coverage label  (0.5): dual-agent LLM verdict — most reliable signal.
+        Fully=1.0, Partially=0.5, Not Covered=0.0
+        Rubric depth    (0.3): quality of teaching (concept + mechanism + example).
+       
+        These weights produce intuitive ranges:
+        Fully Covered + all rubric criteria met  → ~80%
+        Partially Covered + all rubric criteria  → ~55–57%
+        Not Covered                              → ~1–5%
+        """
         coverage_map = {"Fully Covered": 1.0, "Partially Covered": 0.5, "Not Covered": 0.0}
         coverage_score = coverage_map.get(match_status, 0.0)
         raw_rubric_fraction = (criterion_1 + criterion_2 + criterion_3) / 3
@@ -443,13 +459,15 @@ def _clean_quote(quote: str) -> str:
     """
     Strips surrounding quotation marks that the LLM adds around its Exact Quote answer.
     Handles both straight quotes (") and curly/smart quotes (\u201c \u201d \u2018 \u2019).
-    The PDF text layer never contains these wrapper characters, so leaving them in
-    causes search_for() to find nothing even when the content is clearly present.
+    Also normalises internal whitespace runs to single spaces so that search_for()
+    can match phrases that span line breaks in the original PDF.
     """
     q = quote.strip()
     # Remove matching outer quotes loop so nested pairs are all stripped
     while len(q) >= 2 and q[0] in ('"', '\u201c', '\u2018', "'") and q[-1] in ('"', '\u201d', '\u2019', "'"):
         q = q[1:-1].strip()
+    # Collapse any embedded \n / \t / multiple spaces to a single space
+    q = " ".join(q.split())
     return q
 
 
