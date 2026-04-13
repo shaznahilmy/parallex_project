@@ -29,21 +29,33 @@ token = os.getenv("OPENAI_TOKEN")
 print("Loading Embedding Model & LLM Engine...")
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# NLI model — cross-encoder/nli-roberta-base is a lightweight sentence-pair classifier
-# trained on MultiNLI + SNLI. It outputs P(entailment), P(neutral), P(contradiction)
-# for a (premise, hypothesis) pair. We use P(entailment) as our semantic alignment signal.
-# Label order from model config: {0: contradiction, 1: entailment, 2: neutral}
-print("Loading NLI Model (cross-encoder/nli-roberta-base)...")
+# NLI model — cross-encoder/nli-deberta-v3-base is the current open-source benchmark for
+# lightweight NLI. DeBERTa-v3's disentangled attention mechanism handles nuanced logical
+# relationships better than RoBERTa-based models, making it well-suited for faithfulness
+# verification (checking whether a specific cited quote logically entails a guideline).
+# Label indices are resolved dynamically from the model config rather than hardcoded,
+# so the pipeline is robust to any config ordering differences across model versions.
+print("Loading NLI Model (cross-encoder/nli-deberta-v3-base)...")
 try:
-    _nli_tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-roberta-base")
-    _nli_model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-roberta-base")
+    _nli_tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-deberta-v3-base")
+    _nli_model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-deberta-v3-base")
     _nli_model.eval()  # disable dropout, inference only
+    # Resolve label indices dynamically — do not hardcode, ordering can vary across uploads
+    _id2label_lower = {v.lower(): k for k, v in _nli_model.config.id2label.items()}
+    NLI_ENTAILMENT_IDX    = _id2label_lower.get("entailment", 1)
+    NLI_CONTRADICTION_IDX = _id2label_lower.get("contradiction", 0)
+    NLI_NEUTRAL_IDX       = _id2label_lower.get("neutral", 2)
+    print(f"[NLI] Label map: {_nli_model.config.id2label}")
+    print(f"[NLI] Indices → Entailment={NLI_ENTAILMENT_IDX}, Contradiction={NLI_CONTRADICTION_IDX}, Neutral={NLI_NEUTRAL_IDX}")
     NLI_AVAILABLE = True
     print("NLI Model loaded.")
 except Exception as _nli_load_err:
     print(f"[NLI] WARNING: Could not load NLI model: {_nli_load_err}")
-    print("[NLI] entailment_score will default to 0.5 (neutral).")
+    print("[NLI] NLI scores will default to neutral (0.5 entailment, 0.0 contradiction).")
     NLI_AVAILABLE = False
+    NLI_ENTAILMENT_IDX    = 1
+    NLI_CONTRADICTION_IDX = 0
+    NLI_NEUTRAL_IDX       = 2
 
 # Using GitHub Models endpoint
 llm_engine = ChatOpenAI(
@@ -230,30 +242,38 @@ def build_and_save_faiss(pdf_path):
     return True
 
 
-def _compute_entailment_score(premise: str, hypothesis: str) -> float:
+def _compute_nli_scores(premise: str, hypothesis: str) -> dict:
     """
-    Runs cross-encoder/nli-roberta-base on the (premise, hypothesis) pair and
-    returns P(entailment) in [0.0, 1.0].
+    Runs cross-encoder/nli-deberta-v3-base on a (premise, hypothesis) pair and
+    returns all three NLI probabilities as a dict.
 
-    Premise  = the retrieved course content chunks (what the document teaches).
-    Hypothesis = the guideline being audited (what should have been taught).
+    Correct usage in this pipeline (faithfulness verification):
+        Premise   = exact_quote extracted by the Advocate
+                    (short, specific text pulled directly from the source document)
+        Hypothesis = the guideline being audited
+                    (the learning objective the cited quote should prove)
 
-    The model was trained on MultiNLI + SNLI, so it has seen academic and
-    general-domain entailment examples. Label order from the model config:
-        index 0 → contradiction
-        index 1 → entailment   ← this is what we extract
-        index 2 → neutral
+    This answers: "Does the specific evidence the LLM cited actually support the
+    coverage claim it made?" — a fundamentally different question from semantic
+    similarity, which FAISS already answers during retrieval.
 
-    A high score (~0.8+) means the content logically implies the guideline is covered.
-    A neutral score (~0.3-0.6) means the content is related but doesn't clearly entail it.
-    A low score (~0.0-0.2) alongside high contradiction probability means the content
-    actually conflicts with what the guideline expects.
+    High entailment  → the cited text genuinely proves the guideline is taught.
+    High contradiction → the LLM may have cited irrelevant or misleading evidence.
+    High neutral     → evidence exists but does not clearly prove the claim.
+
+    Returns:
+        {
+            "entailment":    float in [0.0, 1.0],
+            "contradiction": float in [0.0, 1.0],
+            "neutral":       float in [0.0, 1.0],
+        }
+    All three values sum to ~1.0 (softmax probabilities).
     """
     if not NLI_AVAILABLE:
-        return 0.5  # neutral default when model failed to load
+        return {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}
 
     try:
-        # Tokenise as a sentence pair; truncate so combined length fits within 512 tokens
+        # Tokenise as a sentence pair; the exact_quote is short so truncation is rarely needed
         inputs = _nli_tokenizer(
             premise,
             hypothesis,
@@ -265,26 +285,32 @@ def _compute_entailment_score(premise: str, hypothesis: str) -> float:
         with torch.no_grad():
             logits = _nli_model(**inputs).logits          # shape (1, 3)
         probs = torch.softmax(logits, dim=1)[0]           # shape (3,)
-        entailment_prob = probs[1].item()                 # index 1 = entailment
-        return round(entailment_prob, 4)
+        return {
+            "entailment":    round(probs[NLI_ENTAILMENT_IDX].item(), 4),
+            "contradiction": round(probs[NLI_CONTRADICTION_IDX].item(), 4),
+            "neutral":       round(probs[NLI_NEUTRAL_IDX].item(), 4),
+        }
     except Exception as e:
         print(f"[NLI] Inference error: {e}")
-        return 0.5
+        return {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}
 
 
 def run_analysis(guidelines: list):
     """
-    Dual-Agent Adversarial Verification pipeline with Weighted NLI Scoring.
+    Dual-Agent Adversarial Verification pipeline with NLI Faithfulness Cascade.
 
     For each guideline:
-      1. FAISS retrieval  — 3 most relevant content chunks
-      2. Distance gate    — skips LLM when no chunk is close enough (L2 > 1.1)
-      3. NLI scoring      — P(entailment) from cross-encoder/nli-roberta-base
-      4. Agent 1 Advocate — coverage verdict + rubric depth scores (C1/C2/C3)
-      5. Agent 2 Adversary— cross-examines Advocate; downgrades verdict if flawed
+      1. FAISS retrieval   — 3 most relevant content chunks
+      2. Distance gate     — skips LLM when no chunk is close enough (L2 > 1.1)
+      3. Agent 1 Advocate  — coverage verdict + rubric depth scores (C1/C2/C3) + exact_quote
+      4. NLI Faithfulness  — cross-encoder/nli-deberta-v3-base checks whether the Advocate's
+                             exact_quote actually entails the guideline (post-LLM verification)
+      5. NLI Tripwire      — if P(contradiction) > 0.40, Adversary is forced regardless of verdict
+      6. Agent 2 Adversary — conditional: runs when NLI tripwire fires OR Advocate claims
+                             "Fully Covered" (high-confidence claims always cross-examined)
 
     Final weighted_nli_score:
-      0.5 × NLI entailment  +  0.3 × coverage label  +  0.2 × rubric depth
+      0.40 × NLI faithfulness entailment  +  0.40 × coverage label  +  0.20 × rubric depth
     """
     # Load the FAISS index that was built during the upload 
     vector_db = FAISS.load_local(FAISS_INDEX_PATH, embedding_model, allow_dangerous_deserialization=True)
@@ -310,6 +336,9 @@ def run_analysis(guidelines: list):
                 "adversary_verdict": "N/A",
                 "adversary_reason": "",
                 "entailment_score": 0.0,
+                "contradiction_score": 0.0,
+                "neutral_score": 0.0,
+                "nli_tripwire_fired": False,
                 "weighted_nli_score": 0,
                 "rubric": {"concept_mentioned": 0, "mechanism_explained": 0, "example_provided": 0}
             })
@@ -330,16 +359,11 @@ def run_analysis(guidelines: list):
         context_text_for_llm = " ".join(context_text.split())
 
         """
-        NLI entailment score that runs before the LLM calls so it is independent.
-        Use the normalised context so the NLI text matches what we give the LLM
-        """
-        entailment_score = _compute_entailment_score(context_text_for_llm, rule)
-        print(f"[NLI] P(entailment) for \"{rule[:55]}...\": {entailment_score}")
-        
-        """
-        The Advocate LLM  
+        The Advocate LLM
         Asks the LLM to assess coverage, provide an exact quote, and score
-        the depth of teaching across 3 rubrics
+        the depth of teaching across 3 rubrics. NLI faithfulness verification
+        runs AFTER this, using the Advocate's exact_quote as the premise so it
+        can actually verify what the LLM claimed, not just what FAISS retrieved.
         """
         final_prompt = prompt.format(guideline=rule, context=context_text_for_llm)
         response = llm_engine.invoke(final_prompt).content
@@ -368,19 +392,61 @@ def run_analysis(guidelines: list):
                 criterion_3 = 1 if "1" in line.split(":")[-1] else 0
 
         """
-        Drift score is calculated after the adversary runs (below)
-        so it correctly reflects the final match_status, not the Advocate's initial claim.
+        NLI Faithfulness Check — runs AFTER the Advocate so it verifies the LLM's
+        own cited evidence, not the raw FAISS context.
+
+        Premise  = exact_quote (short, specific text the Advocate extracted from the source)
+        Hypothesis = rule (the guideline the quote is supposed to prove)
+
+        This is the correct NLI input format: both sides are concise and on-topic.
+        Contrast with the previous approach of feeding 1,500 chars of concatenated
+        FAISS chunks as the premise — that saturated the model's context window and
+        produced meaningless low confidence scores regardless of actual coverage.
         """
+        nli_scores = {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}  # safe defaults
+        has_valid_quote = bool(exact_quote and exact_quote.strip().lower() not in ("none", ""))
+
+        if has_valid_quote and "Not Covered" not in match_status:
+            nli_scores = _compute_nli_scores(exact_quote, rule)
+            print(
+                f"[NLI Faithfulness] "
+                f"E={nli_scores['entailment']:.2f}  "
+                f"C={nli_scores['contradiction']:.2f}  "
+                f"N={nli_scores['neutral']:.2f}  "
+                f"| Quote: \"{exact_quote[:60]}...\""
+            )
+        else:
+            print(f"[NLI Faithfulness] Skipped — no valid quote or verdict is 'Not Covered'.")
 
         """
-        The Adversary LLM 
-        Only runs when the Advocate claims coverage      
+        NLI Tripwire — fires when the cited evidence contradicts the guideline.
+        Threshold: P(contradiction) > 0.40.
+
+        When the tripwire fires, the Adversary is forced to run regardless of the
+        Advocate's confidence level. This catches cases where the LLM cited text
+        that does not actually support its coverage claim.
+
+        The Adversary also always runs for "Fully Covered" verdicts (high-confidence
+        claims warrant extra scrutiny). "Partially Covered" cases are only sent to
+        the Adversary if the NLI tripwire fires, reducing unnecessary LLM calls.
+        """
+        nli_tripwire = nli_scores["contradiction"] > 0.40
+        should_run_adversary = (
+            "Not Covered" not in match_status and (
+                "Fully Covered" in match_status or   # always cross-examine high-confidence claims
+                nli_tripwire                          # NLI detected a contradiction in the evidence
+            )
+        )
+
+        """
+        The Adversary LLM — conditional on the NLI tripwire or a Fully Covered verdict.
         """
         adversary_verdict = "N/A"
         adversary_reason = ""
 
-        if "Not Covered" not in match_status:
-            print(f"[ADVERSARY] Cross-examining: \"{rule[:60]}...\"")
+        if should_run_adversary:
+            trigger_reason = "NLI tripwire (contradiction detected)" if nli_tripwire else "Fully Covered claim"
+            print(f"[ADVERSARY] Cross-examining ({trigger_reason}): \"{rule[:60]}...\"")
             adv_prompt = adversary_prompt.format(
                 guideline=rule,
                 evidence=context_text,
@@ -397,7 +463,7 @@ def run_analysis(guidelines: list):
                 elif line.startswith("Reason:"):
                     adversary_reason = line.replace("Reason:", "").strip()
 
-            # One-step demotion if the Adversary found a flaw, fully to partial and partial to not covered       
+            # One-step demotion if the Adversary found a flaw: Fully → Partially, Partially → Not Covered
             if adversary_verdict == "DOWNGRADED":
                 print(f"[ADVERSARY] DOWNGRADED — {adversary_reason}")
                 if "Fully Covered" in match_status:
@@ -408,41 +474,50 @@ def run_analysis(guidelines: list):
                 print(f"[ADVERSARY] UPHELD — {adversary_reason}")
 
         """
-        Weighted NLI Score computed after the Adversary finalises match_status.
-        Weights are calibrated to reflect actual signal quality in this domain:
-        NLI entailment (0.2): cross-encoder/nli-roberta-base was trained on short
-        sentence pairs (MultiNLI/SNLI). Applied to chunked
-        course content vs guidelines, it consistently scores 1–10% regardless of true coverage
-        due to register mismatch. Treated as a weak tiebreaker.
-        Coverage label  (0.5): dual-agent LLM verdict — most reliable signal.
-        Fully=1.0, Partially=0.5, Not Covered=0.0
-        Rubric depth    (0.3): quality of teaching (concept + mechanism + example).
-       
-        These weights produce intuitive ranges:
-        Fully Covered + all rubric criteria met  → ~80%
-        Partially Covered + all rubric criteria  → ~55–57%
-        Not Covered                              → ~1–5%
+        Weighted Audit Score — computed after the Adversary finalises match_status.
+
+        NLI faithfulness (0.40): P(entailment) from DeBERTa-v3 on (exact_quote, guideline).
+            Now a genuine signal — the quote is short and specific, so the model's
+            inference is reliable. A high score means the cited evidence logically
+            proves the guideline is taught.
+        Coverage label  (0.40): dual-agent LLM verdict (Fully=1.0, Partially=0.5, Not=0.0).
+            Weight reduced from 0.5 to share equally with NLI now that NLI is trustworthy.
+        Rubric depth    (0.20): quality of teaching (concept + mechanism + example).
+            Reduced from 0.3 — useful signal but should not outweigh the faithfulness check.
+
+        Expected output ranges (approximate):
+        Fully Covered + valid quote + all rubric criteria  → ~80–95%
+        Partially Covered + valid quote                    → ~40–60%
+        Not Covered                                        → 0–15%
         """
         coverage_map = {"Fully Covered": 1.0, "Partially Covered": 0.5, "Not Covered": 0.0}
-        coverage_score = coverage_map.get(match_status, 0.0)
+        coverage_score    = coverage_map.get(match_status, 0.0)
         raw_rubric_fraction = (criterion_1 + criterion_2 + criterion_3) / 3
+        entailment_score  = nli_scores["entailment"]
 
         weighted_nli_score = round(
-            (0.2 * entailment_score + 0.5 * coverage_score + 0.3 * raw_rubric_fraction) * 100
+            (0.40 * entailment_score + 0.40 * coverage_score + 0.20 * raw_rubric_fraction) * 100
         )
-        print(f"[SCORE] weighted_nli={weighted_nli_score}% "
-              f"(nli={entailment_score:.2f}×0.2, cov={coverage_score}×0.5, rubric={raw_rubric_fraction:.2f}×0.3)")
+        print(
+            f"[SCORE] audit_score={weighted_nli_score}% "
+            f"(faithfulness={entailment_score:.2f}×0.40, "
+            f"coverage={coverage_score}×0.40, "
+            f"rubric={raw_rubric_fraction:.2f}×0.20)"
+        )
 
         audit_results.append({
             "guideline": rule,
-            "match_status": match_status,           # final verdict (may be downgraded by Adversary)
+            "match_status": match_status,              # final verdict (may be downgraded by Adversary)
             "reasoning": reasoning,
             "exact_quote": exact_quote,
             "evidence_text": context_text,
-            "adversary_verdict": adversary_verdict, # "UPHELD" / "DOWNGRADED" / "N/A"
+            "adversary_verdict": adversary_verdict,    # "UPHELD" / "DOWNGRADED" / "N/A"
             "adversary_reason": adversary_reason,
-            "entailment_score": entailment_score,   # P(entailment) from NLI model, 0.0–1.0
-            "weighted_nli_score": weighted_nli_score, # final composite score, 0–100
+            "entailment_score": entailment_score,      # P(entailment) from NLI faithfulness check
+            "contradiction_score": nli_scores["contradiction"],  # P(contradiction) — tripwire signal
+            "neutral_score": nli_scores["neutral"],    # P(neutral)
+            "nli_tripwire_fired": nli_tripwire,        # True if NLI forced the Adversary to run
+            "weighted_nli_score": weighted_nli_score,  # final composite audit score, 0–100
             "rubric": {
                 "concept_mentioned": criterion_1,
                 "mechanism_explained": criterion_2,

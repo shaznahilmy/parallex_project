@@ -1,3 +1,4 @@
+import React from "react";
 import hatImg from "../assets/hat.jpg";
 
 export default function NavBar() {

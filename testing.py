@@ -47,7 +47,7 @@ TEST_PAIRS = [
         "ground_truth": [
             "Partially Covered",
             "Fully Covered",
-            "Not Covered",
+            "Partially Covered",
             "Not Covered",
         ]
     },

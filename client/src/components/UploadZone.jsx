@@ -1,5 +1,6 @@
 import cloudImg from "../assets/cloud.png";
 import { FiCheckCircle, FiAlertCircle, FiLoader } from "react-icons/fi";
+import React from "react";
 
 // messageType: "success" | "error" | "loading" | null
 export default function UploadZone({
