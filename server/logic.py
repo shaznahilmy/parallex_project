@@ -3,6 +3,10 @@ import io
 import re
 import torch
 import fitz  # PyMuPDF is used for PDF highlighting and merging
+import nltk
+from nltk.tokenize import sent_tokenize
+nltk.download("punkt", quiet=True)
+nltk.download("punkt_tab", quiet=True)
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -27,14 +31,9 @@ from reportlab.lib import colors
 token = os.getenv("OPENAI_TOKEN")
 
 print("Loading Embedding Model & LLM Engine...")
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 
-# NLI model — cross-encoder/nli-deberta-v3-base is the current open-source benchmark for
-# lightweight NLI. DeBERTa-v3's disentangled attention mechanism handles nuanced logical
-# relationships better than RoBERTa-based models, making it well-suited for faithfulness
-# verification (checking whether a specific cited quote logically entails a guideline).
-# Label indices are resolved dynamically from the model config rather than hardcoded,
-# so the pipeline is robust to any config ordering differences across model versions.
 print("Loading NLI Model (cross-encoder/nli-deberta-v3-base)...")
 try:
     _nli_tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-deberta-v3-base")
@@ -247,7 +246,7 @@ def _compute_nli_scores(premise: str, hypothesis: str) -> dict:
     Runs cross-encoder/nli-deberta-v3-base on a (premise, hypothesis) pair and
     returns all three NLI probabilities as a dict.
 
-    Correct usage in this pipeline (faithfulness verification):
+    Usage in this pipeline (faithfulness verification):
         Premise   = exact_quote extracted by the Advocate
                     (short, specific text pulled directly from the source document)
         Hypothesis = the guideline being audited
@@ -321,9 +320,20 @@ def run_analysis(guidelines: list):
     DISTANCE_THRESHOLD = 1.1
 
     for rule in guidelines:
-        # Retrieve the 3 closest chunks, along with their L2 distances
-        results_with_scores = vector_db.similarity_search_with_score(rule, k=3)
+        # Retrieve the 5 most relevant chunks using MMR (Maximum Marginal Relevance).
+        # MMR penalises near-duplicate results so the LLM receives diverse evidence
+        # rather than the same passage repeated across chunks.
+        # fetch_k=20 — candidate pool FAISS considers before MMR re-ranks to k=5.
+        # lambda_mult=0.5 — balanced relevance/diversity (0=max diversity, 1=pure similarity).
+        # We still need L2 scores for the distance gate, so we run a quick 1-result
+        # similarity search first purely to get the best-match distance, then use MMR
+        # for the actual context chunks passed to the LLM.
+        # results_with_scores = vector_db.similarity_search_with_score(rule, k=3)  # old: plain similarity, k=3
+        results_with_scores = vector_db.similarity_search_with_score(rule, k=1)
         best_match_distance = results_with_scores[0][1]
+        results_with_scores = [(doc, 0.0) for doc in vector_db.max_marginal_relevance_search(
+            rule, k=5, fetch_k=20, lambda_mult=0.5
+        )]
 
         #Rule-based logic to skip the LLM entirely if no chunk is close enough
         if best_match_distance > DISTANCE_THRESHOLD:
@@ -548,17 +558,21 @@ def _clean_quote(quote: str) -> str:
 
 def _search_and_highlight_quote(page, quote: str, color: tuple):
     """
-    Attempts to find and highlight a quote on a single PDF page using two strategies
+    Attempts to find and highlight a quote on a single PDF page using two strategies.
 
-    1 Full match:
+    1. Full match:
         Search for the entire cleaned quote string. Works most of the time when
         the LLM's extracted text matches the PDF's text layer.
 
-    2. Phrase fragments:
-        If the full match fails for eg because PyPDFLoader normalised whitespace
-        or the LLM paraphrased slightly, split the quote into individual
-        sentences/clauses and highlight each fragment that IS found.
-        Minimum fragment length is 20 characters to avoid false positives.
+    2. Span expansion (NLTK sentence-aware):
+        If the full match fails, tokenise the quote into sentences using NLTK's
+        Punkt tokeniser (handles abbreviations, numbers, edge cases — unlike a
+        naive regex split on punctuation). Then try progressively longer spans:
+        sentence[i], sentence[i]+sentence[i+1], ... until fitz finds a match.
+        Once a span matches, we stop growing it (break) — this finds the most
+        specific matchable span rather than independently searching every fragment,
+        which avoids false positives from short generic phrases.
+        Minimum span length is 20 characters.
 
     Returns True if at least one highlight was applied.
     """
@@ -570,6 +584,8 @@ def _search_and_highlight_quote(page, quote: str, color: tuple):
         return False
 
     # Strategy 1: try the whole quote first
+    # This works only when the LLM's extracted text exactly matches fitz's text layer,
+    # which fails whenever the LLM normalises a line-break to a space (very common).
     instances = page.search_for(quote)
     if instances:
         annot = page.add_highlight_annot(instances)
@@ -577,16 +593,26 @@ def _search_and_highlight_quote(page, quote: str, color: tuple):
         annot.update()
         return True
 
-    # Strategy 2: break into sentence/clause fragments and search each.
-    # Split on sentence-ending punctuation (. ! ?) or on commas for long clauses
-    fragments = [f.strip() for f in re.split(r'[.!?,;]', quote) if len(f.strip()) >= 20]
-    for fragment in fragments:
-        instances = page.search_for(fragment)
-        if instances:
-            annot = page.add_highlight_annot(instances)
-            annot.set_colors(stroke=color)
-            annot.update()
-            highlighted = True
+    # Strategy 2: NLTK span expansion.
+    # Tokenise into proper sentences first (Punkt handles abbreviations correctly,
+    # unlike re.split which fires on every period/comma regardless of context).
+    # For each starting sentence, grow the span one sentence at a time until fitz
+    # finds a match, then break — we only want the shortest matchable span.
+    sentences = sent_tokenize(quote)
+    processed_spans = set()  # deduplicate: skip spans already highlighted on this page
+    for i in range(len(sentences)):
+        for j in range(i + 1, len(sentences) + 1):
+            span = " ".join(sentences[i:j])
+            if len(span) < 20 or span in processed_spans:
+                continue
+            instances = page.search_for(span)
+            if instances:
+                annot = page.add_highlight_annot(instances)
+                annot.set_colors(stroke=color)
+                annot.update()
+                processed_spans.add(span)
+                highlighted = True
+                break  # stop growing once this starting sentence has a match
 
     return highlighted
 

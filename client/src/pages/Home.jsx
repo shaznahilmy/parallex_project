@@ -42,6 +42,17 @@ export default function Home() {
     const file = e.target.files[0];
     if (!file) return;
 
+    // 25 MB hard limit for guidelines — large guideline PDFs are unlikely;
+    // if it's bigger the LLM extraction call will time out anyway.
+    const MAX_GUIDELINE_MB = 25;
+    if (file.size > MAX_GUIDELINE_MB * 1024 * 1024) {
+      setGuideFileName(file.name);
+      setGuideMessage(`File too large. Maximum size is ${MAX_GUIDELINE_MB} MB.`);
+      setGuideMessageType("error");
+      e.target.value = ""; // reset input so the same file can be reselected after trimming
+      return;
+    }
+
     // resetting content if already uploaded
     if (isContentReady || contentFileName) {
       setIsContentReady(false);
@@ -83,6 +94,18 @@ export default function Home() {
   const handleContentUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // 50 MB hard limit for course content — keeps FAISS indexing and fitz
+    // text extraction within reasonable memory and time budgets.
+    const MAX_CONTENT_MB = 50;
+    if (file.size > MAX_CONTENT_MB * 1024 * 1024) {
+      setContentFileName(file.name);
+      setContentMessage(`File too large. Maximum size is ${MAX_CONTENT_MB} MB.`);
+      setContentMessageType("error");
+      e.target.value = "";
+      return;
+    }
+
     setContentFileName(file.name);
     setIsUploadingContent(true);
     setContentMessage("Indexing course content...");

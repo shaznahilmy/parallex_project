@@ -52,7 +52,8 @@ export default function UploadZone({
               {fileName || "Drag and drop file here"}
             </p>
             <p className="text-[#4a4f6a] text-[11px] sm:text-[12px] mt-[2px] mb-0">
-              Limit 200MB per file • PDF
+              {/* Limit 200MB per file • PDF */}
+              Max 25 MB (guidelines) · 50 MB (content) • PDF only
             </p>
           </div>
         </div>
