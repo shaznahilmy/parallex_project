@@ -9,7 +9,7 @@ import NavBar from "../components/NavBar";
 export default function Results() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { guidelines } = location.state || {};
+  const { guidelines, sessionId } = location.state || {};
   const [auditResults, setAuditResults] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +37,7 @@ export default function Results() {
         // Single API call to generate pdf and for the audit results
         const pdfRes = await axios.post("http://localhost:8000/generate-pdf", {
           guidelines: selected,
+          session_id: sessionId,
         });
 
         if (pdfRes.data.status === "error") {

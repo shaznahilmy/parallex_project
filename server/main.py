@@ -1,10 +1,11 @@
 import os
+import uuid
 import base64
 #to save uploaded files
 import shutil 
 import traceback
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 #allows fe to call be
 from fastapi.middleware.cors import CORSMiddleware
 #validates incoming json
@@ -33,8 +34,11 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # Defining the expected JSON body for the audit endpoint
 class AuditRequest(BaseModel):
     guidelines: List[str]
+    # session_id ties every request to the FAISS index and PDF uploaded at /upload-content.
+    # Each upload generates a fresh UUID so concurrent users never share state.
+    session_id: str
 
-#ENDPOINT 1 to upload guildline
+#ENDPOINT 1 to upload guideline
 @app.post("/upload-guidelines")
 async def upload_guidelines(file: UploadFile = File(...)):
     # Saving the file to the temp folder
@@ -55,32 +59,52 @@ async def upload_guidelines(file: UploadFile = File(...)):
 # ENDPOINT 2 to upload course content
 @app.post("/upload-content")
 async def upload_content(file: UploadFile = File(...)):
-    #saving the file
-    file_path = os.path.join(TEMP_DIR, "content.pdf") 
+    # Generate a unique session ID for this upload.
+    # All downstream calls (run-audit, generate-pdf) must include this ID
+    # so they load the correct FAISS index and annotate the correct PDF —
+    # even if another user uploads a different document at the same time.
+    session_id = str(uuid.uuid4())
+    session_dir = os.path.join(TEMP_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
+    # Save the uploaded PDF under the session directory
+    file_path = os.path.join(session_dir, "content.pdf")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
-    # Triggering the FAISS indexing immediately after upload
-    logic.build_and_save_faiss(file_path)
+
+    # Build and persist the FAISS index inside the same session directory
+    session_faiss_path = os.path.join(session_dir, "faiss_index")
+    logic.build_and_save_faiss(file_path, session_faiss_path)
     
     return {
         "status": "success",
+        "session_id": session_id,   # returned to the frontend to include in subsequent requests
         "message": "Course content uploaded and FAISS index built."
     }     
 
 
 # ENDPOINT 3 to run the comparison
-@app.post("/run-audit")
-async def run_audit(request: AuditRequest):
-    # Passing the JSON list of guidelines into LLM
-    #returns match status, reasonining, quote and score
-    results = logic.run_analysis(request.guidelines)
+#not needed, the 4th endpoint does all
+# @app.post("/run-audit")
+# async def run_audit(request: AuditRequest):
+#     # Resolve the session-specific paths from the session_id supplied by the frontend.
+#     # Using per-session directories means User A's FAISS index and PDF are
+#     # completely isolated from User B's, regardless of request timing.
+#     session_dir        = os.path.join(TEMP_DIR, request.session_id)
+#     session_faiss_path = os.path.join(session_dir, "faiss_index")
+
+#     if not os.path.exists(session_faiss_path):
+#         raise HTTPException(status_code=404, detail="Session not found. Please re-upload the course content.")
+
+#     # Passing the JSON list of guidelines into LLM
+#     #returns match status, reasonining, quote and score
+#     results = logic.run_analysis(request.guidelines, session_faiss_path)
     
-    return {
-        "status": "success",
-        "total_audited": len(request.guidelines),
-        "results": results
-    }
+#     return {
+#         "status": "success",
+#         "total_audited": len(request.guidelines),
+#         "results": results
+#     }
 
 
 # ENDPOINT 4 to generate the audit PDF and return it as a base64-encoded JSON string and the results
@@ -90,14 +114,24 @@ async def run_audit(request: AuditRequest):
 @app.post("/generate-pdf")
 async def generate_pdf(request: AuditRequest):
     try:
+        # Resolve the session-specific paths from the session_id supplied by the frontend
+        session_dir        = os.path.join(TEMP_DIR, request.session_id)
+        session_faiss_path = os.path.join(session_dir, "faiss_index")
+        course_pdf_path    = os.path.join(session_dir, "content.pdf")
+
+        if not os.path.exists(session_faiss_path):
+            raise HTTPException(status_code=404, detail="Session not found. Please re-upload the course content.")
+
         # Run the analysis (FAISS retrieval + LLM grading)
-        results = logic.run_analysis(request.guidelines)
+        results = logic.run_analysis(request.guidelines, session_faiss_path)
 
         # Write the PDF to a temp file
         current_date = datetime.now().strftime("%B_%d_%Y")
         filename = f"Analysis_Report_{current_date}.pdf"
-        pdf_path = os.path.join(TEMP_DIR, filename)
-        logic.generate_audit_pdf(results, pdf_path)
+        pdf_path = os.path.join(session_dir, filename)
+
+        # Pass the session-specific course PDF path so the correct document gets annotated
+        logic.generate_audit_pdf(results, pdf_path, course_pdf_path)
 
         # Read the file and base64 encode it so it travels safely as JSON
         with open(pdf_path, "rb") as f:

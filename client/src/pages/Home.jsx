@@ -20,6 +20,9 @@ export default function Home() {
   const [contentMessageType, setContentMessageType] = useState(null);
   const [contentFileName, setContentFileName] = useState("");
   const [isContentReady, setIsContentReady] = useState(false);
+  // session_id returned by /upload-content — uniquely identifies the FAISS index
+  // and course PDF for this upload so concurrent users never share state
+  const [sessionId, setSessionId] = useState(null);
 
   // Typing effect state
   const [displayedText, setDisplayedText] = useState("");
@@ -113,7 +116,9 @@ export default function Home() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      await axios.post("http://localhost:8000/upload-content", formData);
+      const res = await axios.post("http://localhost:8000/upload-content", formData);
+      // Store the session_id so it can be sent with the audit request
+      setSessionId(res.data.session_id);
       setIsContentReady(true);
       setContentMessage("Course content indexed and ready!");
       setContentMessageType("success");
@@ -143,10 +148,11 @@ export default function Home() {
       return;
     }
 
-    // Navigating to results page immediately with guidelines
+    // Navigating to results page immediately with guidelines and session context
     navigate("/results", {
       state: {
         guidelines,
+        sessionId,
       },
     });
   };

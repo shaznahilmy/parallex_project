@@ -4,3 +4,5 @@ temp/
 node_modules/
 tests/
 docucred-platform/
+docucred-app-fe/
+.env
