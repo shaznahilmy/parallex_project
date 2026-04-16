@@ -1,1 +1,8 @@
 venv/
+faiss_index_react/
+temp/
+node_modules/
+tests/
+docucred-platform/
+docucred-app-fe/
+.env
