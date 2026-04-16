@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { FiChevronDown, FiChevronRight, FiCheck, FiX } from "react-icons/fi";
-//#86efac
-// Status colour helper function to determine the colour and label based on match status
+
 const statusStyle = (status) => {
   if (status?.includes("Fully Covered"))
     return { color: "#21c45d", label: "Match: Fully Covered" };
@@ -12,14 +11,12 @@ const statusStyle = (status) => {
   return { color: "#8b8fa8", label: status };
 };
 
-// Colour for coverage quality bar
 const scoreColor = (score) => {
-  if (score >= 70) return "#21c45d"; // strong
-  if (score >= 40) return "#fbbf24"; // moderate
-  return "#f87171"; // weak
+  if (score >= 70) return "#21c45d";
+  if (score >= 40) return "#fbbf24";
+  return "#f87171";
 };
 
-// Plain-English label so users immediately understand what the number means
 const scoreLabel = (score) => {
   if (score >= 70) return "Strong";
   if (score >= 40) return "Moderate";
@@ -27,7 +24,6 @@ const scoreLabel = (score) => {
   return "Not Covered";
 };
 
-// When the Adversary downgraded, infer what the original verdict was
 const inferOriginalVerdict = (finalStatus) => {
   if (finalStatus?.includes("Partially Covered")) return "Fully Covered";
   if (finalStatus?.includes("Not Covered")) return "Partially Covered";
@@ -44,7 +40,6 @@ export default function ResultCard({ result }) {
   const advVerdict = result.adversary_verdict;
   const advReason = result.adversary_reason;
 
-  // When downgraded, show what it was demoted from so the user understands
   const originalVerdict =
     advVerdict === "DOWNGRADED"
       ? inferOriginalVerdict(result.match_status)
@@ -90,8 +85,6 @@ export default function ResultCard({ result }) {
             </div>
           )}
 
-          {/*Advocate reasoning*/}
-          {/* text-[#cfd1db] */}
           <p className="text-white text-[14px] leading-[1.6] mb-[14px]">
             {result.reasoning}
           </p>
@@ -205,7 +198,6 @@ export default function ResultCard({ result }) {
                   className="text-[13px] font-semibold"
                   style={{
                     color: advVerdict === "UPHELD" ? "#21c45d" : "#fca5a5",
-                    // color: advVerdict === "UPHELD" ? "#86efac" : "#fca5a5",
                   }}
                 >
                   Review Explanation

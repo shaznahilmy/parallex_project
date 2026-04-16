@@ -1,6 +1,9 @@
-import cloudImg from "../assets/cloud.png";
-import { FiCheckCircle, FiAlertCircle, FiLoader } from "react-icons/fi";
-import React from "react";
+import {
+  FiCheckCircle,
+  FiAlertCircle,
+  FiLoader,
+  FiUploadCloud,
+} from "react-icons/fi";
 
 // messageType: "success" | "error" | "loading" | null
 export default function UploadZone({
@@ -40,19 +43,13 @@ export default function UploadZone({
             : "opacity-100 cursor-pointer"
         }`}
       >
-        {/* Icon + text */}
         <div className="flex items-center gap-[12px] flex-1 min-w-0">
-          <img
-            src={cloudImg}
-            alt="upload"
-            className="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] object-contain shrink-0"
-          />
+          <FiUploadCloud size={20} className="shrink-0 text-[#3d664d]" />
           <div className="min-w-0">
             <p className="text-[#cfd1db] text-[13px] sm:text-[14px] font-medium m-0 truncate">
               {fileName || "Drag and drop file here"}
             </p>
             <p className="text-[#4a4f6a] text-[11px] sm:text-[12px] mt-[2px] mb-0">
-              {/* Limit 200MB per file • PDF */}
               Max 25 MB (guidelines) · 50 MB (content) • PDF only
             </p>
           </div>

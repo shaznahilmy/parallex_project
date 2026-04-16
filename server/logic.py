@@ -190,7 +190,7 @@ extraction_prompt = PromptTemplate(input_variables=["text"], template=extraction
     Extracting and searching with the same engine guarantees the text
     representation is identical, so highlight lookups can find matches
 """
-def _extract_text_with_fitz(pdf_path: str) -> list:
+def extract_text(pdf_path: str) -> list:
     
     doc = fitz.open(pdf_path)
     documents = []
@@ -207,24 +207,23 @@ def _extract_text_with_fitz(pdf_path: str) -> list:
 
 # Loads a guidelines PDF and uses the LLM to extract a list of learning objectives
 def extract_guidelines(pdf_path):
-    # Using fitz instead of pyPDFLoader
-    pages = _extract_text_with_fitz(pdf_path)
+   
+    pages = extract_text(pdf_path)
 
-    # Combine every page into one string for the LLM to process
     full_text = "\n".join([p.page_content for p in pages])
 
     final_prompt = extraction_prompt.format(text=full_text)
     print("Extracting guidelines via LLM...")
     response = llm_engine.invoke(final_prompt)
-    response = response.content  # Unwrap the message object to get the plain string
+    response = response.content  
 
     # Parsing the numbered list the LLM returns into a clean Python list
     clean_guidelines = []
     for line in response.split('\n'):
         line = line.strip()
-        # Strip leading numbering/bullets (e.g. "1.", "-", "*") so the frontend doesn't double-number
+    
         clean_line = re.sub(r'^(\d+\.|\-|\*)\s*', '', line).strip()
-        if len(clean_line) > 10:  # Skipping blank or trivially short lines
+        if len(clean_line) > 10:  # Skipping blank lines
             clean_guidelines.append(clean_line)
 
     return clean_guidelines
@@ -236,16 +235,14 @@ def extract_guidelines(pdf_path):
     Returns the session-specific FAISS index path so the caller can pass it
     to run_analysis()
     """
-def build_and_save_faiss(pdf_path: str, session_faiss_path: str) -> bool:
-    # Extract text using fitz, same engine as search_for() used during highlighting
-    # so the indexed text and the PDF text layer are consistent
-    docs = _extract_text_with_fitz(pdf_path)
+def build_and_save_faiss(pdf_path: str, session_faiss_path: str) -> bool:    
+    docs = extract_text(pdf_path)
 
     # Splitting the document into 500 char chunks with 50 char overlap
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
-    # Building the FAISS index and persisting it so run_analysis can load it without re-embedding.
+    # Building the FAISS index and persisting 
     vector_db = FAISS.from_documents(chunks, embedding_model)
     vector_db.save_local(session_faiss_path)
     return True
@@ -279,25 +276,19 @@ def _compute_nli_scores(premise: str, hypothesis: str) -> dict:
         return {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}
 
 #running the dual agent pipeline
-def run_analysis(guidelines: list, session_faiss_path: str):   
-    # Load the session-specific FAISS index that was built during the upload   
+def run_analysis(guidelines: list, session_faiss_path: str):     
     vector_db = FAISS.load_local(session_faiss_path, embedding_model, allow_dangerous_deserialization=True)
-
     audit_results = []
-
-    # L2 distance threshold: anything above 1.1 is considered semantically unrelated. lower means more similar
+    # L2 distance threshold
     DISTANCE_THRESHOLD = 1.1
-
     for rule in guidelines:
-        # Retrieve the 5 most relevant chunks using MMR (Maximum Marginal Relevance)          
-        # results_with_scores = vector_db.similarity_search_with_score(rule, k=3)  # old code plain similarity, k=3
+        # Retrieving the 5 most relevant chunks using MMR      
         results_with_scores = vector_db.similarity_search_with_score(rule, k=1)
         best_match_distance = results_with_scores[0][1]
         results_with_scores = [(doc, 0.0) for doc in vector_db.max_marginal_relevance_search(
             rule, k=5, fetch_k=20, lambda_mult=0.5
         )]
-
-        #Rule-based logic to skip the LLM entirely if no chunk is close enough
+        #Rule based logic
         if best_match_distance > DISTANCE_THRESHOLD:
             audit_results.append({
                 "guideline": rule,
@@ -314,14 +305,9 @@ def run_analysis(guidelines: list, session_faiss_path: str):
                 "weighted_nli_score": 0,
                 "rubric": {"concept_mentioned": 0, "mechanism_explained": 0, "example_provided": 0}
             })
-            continue
-
-        # Combine the retrieved chunks into a single context string for the LLM
-        context_text = "\n".join([doc.page_content for doc, score in results_with_scores])
-
-       
+            continue       
+        context_text = "\n".join([doc.page_content for doc, score in results_with_scores])       
         context_text_for_llm = " ".join(context_text.split())
-
        
         final_prompt = prompt.format(guideline=rule, context=context_text_for_llm)
         advocate_result: AdvocateResponse = advocate_llm.invoke(final_prompt)
@@ -349,15 +335,14 @@ def run_analysis(guidelines: list, session_faiss_path: str):
         else:
             print(f"[NLI Faithfulness] Skipped — no valid quote or verdict is 'Not Covered'.")
 
-        #NLI Tripwire is triggered when the cited evidence contradicts the guideline or when the advocate is confident
+        #NLI Tripwire
         nli_tripwire = nli_scores["contradiction"] > 0.40
         should_run_adversary = (
             "Not Covered" not in match_status and (
-                "Fully Covered" in match_status or   # always cross-examine high-confidence claims
-                nli_tripwire   # NLI detected a contradiction in the evidence
+                "Fully Covered" in match_status or  
+                nli_tripwire   
             )
-        )
-        
+        )        
         adversary_verdict = "N/A"
         adversary_reason = ""
 
@@ -374,7 +359,7 @@ def run_analysis(guidelines: list, session_faiss_path: str):
             adversary_verdict = adv_result.verdict
             adversary_reason  = adv_result.reason
 
-            # One-step demotion if the Adversary found a flaw: Fully to Partially, Partially to Not Covered
+            # One step demotion
             if adversary_verdict == "DOWNGRADED":
                 print(f"[ADVERSARY] DOWNGRADED — {adversary_reason}")
                 if "Fully Covered" in match_status:
@@ -402,24 +387,23 @@ def run_analysis(guidelines: list, session_faiss_path: str):
 
         audit_results.append({
             "guideline": rule,
-            "match_status": match_status,              # final verdict (may be downgraded by Adversary)
+            "match_status": match_status, # final verdict 
             "reasoning": reasoning,
             "exact_quote": exact_quote,
             "evidence_text": context_text,
-            "adversary_verdict": adversary_verdict,    # "UPHELD" / "DOWNGRADED" / "N/A"
+            "adversary_verdict": adversary_verdict,
             "adversary_reason": adversary_reason,
             "entailment_score": entailment_score,      # P(entailment) from NLI faithfulness check
-            "contradiction_score": nli_scores["contradiction"],  # P(contradiction) — tripwire signal
+            "contradiction_score": nli_scores["contradiction"],  # P(contradiction) tripwire signal
             "neutral_score": nli_scores["neutral"],    # P(neutral)
-            "nli_tripwire_fired": nli_tripwire,        # True if NLI forced the Adversary to run
-            "weighted_nli_score": weighted_nli_score,  # final composite audit score, 0–100
+            "nli_tripwire_fired": nli_tripwire,        # true if NLI forced the Adversary to run
+            "weighted_nli_score": weighted_nli_score, 
             "rubric": {
                 "concept_mentioned": criterion_1,
                 "mechanism_explained": criterion_2,
                 "example_provided": criterion_3
             }
         })
-
     return audit_results
 
 

@@ -1,4 +1,3 @@
-import React from "react";
 export default function PDFViewer({ pdfUrl, isGenerating, onDownload }) {
   return (
     <div className="flex flex-col h-full min-w-0 bg-[#1e3029] border border-[#262730] rounded-[8px] overflow-hidden">

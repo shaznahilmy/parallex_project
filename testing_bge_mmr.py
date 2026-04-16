@@ -3,8 +3,6 @@
 #   - Embedding model: BAAI/bge-small-en-v1.5  (was: all-MiniLM-L6-v2)
 #   - Retrieval:       MMR k=5, fetch_k=20     (was: similarity k=3)
 
-
-# Run from the project root:
 #   python testing_bge_mmr.py
 
 
@@ -197,11 +195,15 @@ for pair in TEST_PAIRS:
         continue
 
     try:
+        # Each pair gets its own FAISS index path so runs don't overwrite each other
+        session_faiss_path = f"temp/test_faiss_pair_{pair_id}"
+        os.makedirs("temp", exist_ok=True)
+
         # print(f"  → Building FAISS index (bge-small-en-v1.5)...")
-        logic.build_and_save_faiss(content_pdf)
+        logic.build_and_save_faiss(content_pdf, session_faiss_path)
 
         # print(f"  → Running audit on {len(guidelines)} guidelines (MMR k=5)...")
-        results = logic.run_analysis(guidelines)
+        results = logic.run_analysis(guidelines, session_faiss_path)
 
         for i, result in enumerate(results):
             predicted = result["match_status"].strip()
@@ -256,7 +258,7 @@ else:
     print(f"{'Partially Covered (act)':25} {cm[1][0]:>5} {cm[1][1]:>5} {cm[1][2]:>5}")
     print(f"{'Not Covered (actual)':25} {cm[2][0]:>5} {cm[2][1]:>5} {cm[2][2]:>5}")
 
-    output_file = "testing_results_bge_mmr_gpt-4.1-mini_new.txt"
+    output_file = "testing_results_bge_mmr_gpt-4.0_dual_agent.txt"
     with open(output_file, "w") as f:
         f.write("Pipeline: BAAI/bge-small-en-v1.5 + MMR (k=5, fetch_k=20, lambda=0.5)\n")
         f.write(f"Total tested: {len(y_true)}\n")

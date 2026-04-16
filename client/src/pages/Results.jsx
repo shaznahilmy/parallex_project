@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import Footer from "../components/Footer";
-import ResultCard from "../components/ResultCard";
-import PDFViewer from "../components/PDFViewer";
-import NavBar from "../components/NavBar";
+import Footer from "@/components/Footer.jsx";
+import ResultCard from "@/components/ResultCard.jsx";
+import PDFViewer from "@/components/PDFViewer.jsx";
+import NavBar from "@/components/NavBar.jsx";
 
 export default function Results() {
   const location = useLocation();
@@ -15,12 +15,14 @@ export default function Results() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // hasRun prevents React StrictMode's double mount in dev which would otherwise run two api calls.
+  // Blob stored in a ref — avoids attaching it to window which blocks bfcache
+  const pdfBlobRef = useRef(null);
+
+  // hasRun prevents React StrictMode's double-mount in dev from firing two API calls
   const hasRun = useRef(false);
 
-  // Run audit and generate PDF on page load
   useEffect(() => {
-    if (hasRun.current) return; // Abort the second StrictMode call
+    if (hasRun.current) return;
     hasRun.current = true;
 
     if (!guidelines || guidelines.length === 0) {
@@ -55,11 +57,8 @@ export default function Results() {
           bytes[i] = binaryStr.charCodeAt(i);
         }
         const pdfBlob = new Blob([bytes], { type: "application/pdf" });
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        setPdfUrl(pdfUrl);
-
-        // Keeping the blob on window so the download button can reuse it
-        window.auditPdfBlob = pdfBlob;
+        pdfBlobRef.current = pdfBlob;
+        setPdfUrl(URL.createObjectURL(pdfBlob));
 
         setIsLoading(false);
       } catch (err) {
@@ -73,8 +72,8 @@ export default function Results() {
   }, [guidelines, navigate]);
 
   const handlePdfDownload = () => {
-    if (window.auditPdfBlob) {
-      const url = URL.createObjectURL(window.auditPdfBlob);
+    if (pdfBlobRef.current) {
+      const url = URL.createObjectURL(pdfBlobRef.current);
       const a = document.createElement("a");
       a.href = url;
       a.download = "audit_report.pdf";
@@ -91,30 +90,13 @@ export default function Results() {
         <NavBar />
 
         <main className="flex-grow mx-[16px] py-8">
-          {/* yellow is ipad mini, normal and ipad pro is green */}
-          {/* <div className="text-white sm:text-red-400 md:text-yellow-400 lg:text-green-400">
-            breakpoint test
-          </div> */}
-          {/*  Progress Bar  */}
           {isLoading && (
             <div className="max-w-full mx-auto mb-8">
-              <style>{`
-              @keyframes audit-scan {
-                0%   { transform: translateX(-100%); }
-                100% { transform: translateX(520%); }
-              }
-            `}</style>
               <p className="text-[#fafafa] text-[20px] pt-[10px] font-medium mb-3 flex items-center gap-2">
                 Running Analysis...
               </p>
               <div className="h-[4px] bg-[#262730] rounded-[2px] overflow-hidden relative">
-                <div
-                  className="absolute h-full bg-[#748b75] rounded-[2px]"
-                  style={{
-                    width: "20%",
-                    animation: "audit-scan 1.8s ease-in-out infinite",
-                  }}
-                />
+                <div className="absolute h-full bg-[#748b75] rounded-[2px] audit-scan-bar" />
               </div>
             </div>
           )}
@@ -129,7 +111,7 @@ export default function Results() {
 
           {auditResults && (
             <div className="w-full">
-              <div className="w-full  mx-auto">
+              <div className="w-full mx-auto">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-[#fafafa] text-[22px] font-bold">
                     Analysis Results

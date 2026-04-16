@@ -1,5 +1,3 @@
-/* @import "tailwindcss"; */
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,7 +14,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   font-size: 14px;
-  font-family: "Source Sans Pro", "Segoe UI", sans-serif;
+  font-family: 'Source Sans Pro', 'Segoe UI', sans-serif;
 }
 
 /* Thin scrollbars to match dark theme */
@@ -26,16 +24,27 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background-color: #f1f1f1;
+  background-color: #1a3a2a;
   width: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #b5b7be;
+  background-color: #3d664d;
   border-radius: 4px;
   width: 4px;
 }
 
 ::-webkit-scrollbar-track:hover {
-  background-color: #f1f1f1;
+  background-color: #1a3a2a;
+}
+
+/* Results page loading bar animation */
+@keyframes audit-scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(520%); }
+}
+
+.audit-scan-bar {
+  width: 20%;
+  animation: audit-scan 1.8s ease-in-out infinite;
 }
