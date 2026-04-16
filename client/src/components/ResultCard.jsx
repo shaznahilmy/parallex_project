@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { FiChevronDown, FiChevronRight, FiCheck, FiX } from "react-icons/fi";
 
-// Status colour helper function to determine the colour and label based on match status
 const statusStyle = (status) => {
   if (status?.includes("Fully Covered"))
     return { color: "#21c45d", label: "Match: Fully Covered" };
@@ -12,14 +11,12 @@ const statusStyle = (status) => {
   return { color: "#8b8fa8", label: status };
 };
 
-// Colour for coverage quality bar
 const scoreColor = (score) => {
-  if (score >= 70) return "#21c45d"; // strong
-  if (score >= 40) return "#fbbf24"; // moderate
-  return "#f87171"; // weak
+  if (score >= 70) return "#21c45d";
+  if (score >= 40) return "#fbbf24";
+  return "#f87171";
 };
 
-// Plain-English label so users immediately understand what the number means
 const scoreLabel = (score) => {
   if (score >= 70) return "Strong";
   if (score >= 40) return "Moderate";
@@ -27,7 +24,6 @@ const scoreLabel = (score) => {
   return "Not Covered";
 };
 
-// When the Adversary downgraded, infer what the original verdict was
 const inferOriginalVerdict = (finalStatus) => {
   if (finalStatus?.includes("Partially Covered")) return "Fully Covered";
   if (finalStatus?.includes("Not Covered")) return "Partially Covered";
@@ -40,12 +36,10 @@ export default function ResultCard({ result }) {
   const { color, label } = statusStyle(result.match_status);
 
   const score = result.weighted_nli_score ?? null;
-  const entailment = result.entailment_score ?? null;
   const rubric = result.rubric ?? null;
   const advVerdict = result.adversary_verdict;
   const advReason = result.adversary_reason;
 
-  // When downgraded, show what it was demoted from so the user understands
   const originalVerdict =
     advVerdict === "DOWNGRADED"
       ? inferOriginalVerdict(result.match_status)
@@ -75,9 +69,9 @@ export default function ResultCard({ result }) {
 
           {/*Adversary badge*/}
           {advVerdict && advVerdict !== "N/A" && (
-            <div className="flex items-start gap-[8px] mb-[10px]">
+            <div className="mb-[10px]">
               <span
-                className="text-[11px] font-bold px-[8px] py-[3px] rounded-[4px] shrink-0"
+                className="text-[11px] font-bold px-[8px] py-[3px] rounded-[4px]"
                 style={{
                   background: advVerdict === "UPHELD" ? "#052e16" : "#3b1010",
                   color: advVerdict === "UPHELD" ? "#21c45d" : "#f87171",
@@ -86,18 +80,12 @@ export default function ResultCard({ result }) {
               >
                 {advVerdict === "UPHELD"
                   ? " Verified by Second Review"
-                  : ` Revised from ${originalVerdict ?? "higher verdict"}`}
+                  : `Revised from ${originalVerdict ?? "higher verdict"}`}
               </span>
-              {advReason && (
-                <p className="text-[#8b8fa8] text-[12px] italic leading-[1.5]">
-                  {advReason}
-                </p>
-              )}
             </div>
           )}
 
-          {/*Advocate reasoning*/}
-          <p className="text-[#cfd1db] text-[14px] italic leading-[1.6] mb-[14px]">
+          <p className="text-white text-[14px] leading-[1.6] mb-[14px]">
             {result.reasoning}
           </p>
 
@@ -180,6 +168,48 @@ export default function ResultCard({ result }) {
             </div>
           )}
 
+          {/*Adversary Agent card */}
+          {advVerdict && advVerdict !== "N/A" && advReason && (
+            <div
+              className="rounded-[6px] overflow-hidden mb-[14px] border"
+              style={{
+                borderColor: advVerdict === "UPHELD" ? "#166534" : "#7f1d1d",
+                background: advVerdict === "UPHELD" ? "#061a0e" : "#1c0808",
+              }}
+            >
+              {/*  Adversary Verdict*/}
+              <div
+                className="flex items-center gap-[8px] px-[14px] py-[9px] border-b"
+                style={{
+                  borderColor: advVerdict === "UPHELD" ? "#166534" : "#7f1d1d",
+                  background: advVerdict === "UPHELD" ? "#052e16" : "#3b1010",
+                }}
+              >
+                <span
+                  className="text-[11px] font-bold px-[7px] py-[2px] rounded-[4px]"
+                  style={{
+                    background: advVerdict === "UPHELD" ? "#166534" : "#7f1d1d",
+                    color: advVerdict === "UPHELD" ? "#21c45d" : "#fecaca",
+                  }}
+                >
+                  {advVerdict === "UPHELD" ? "UPHELD" : "DOWNGRADED"}
+                </span>
+                <span
+                  className="text-[13px] font-semibold"
+                  style={{
+                    color: advVerdict === "UPHELD" ? "#21c45d" : "#fca5a5",
+                  }}
+                >
+                  Review Explanation
+                </span>
+              </div>
+              {/* Explanation  */}
+              <p className="text-white text-[14px] leading-[1.6] px-[14px] py-[10px]">
+                {advReason}
+              </p>
+            </div>
+          )}
+
           {/*Source evidence expander*/}
           <div className="border border-[#061d12] rounded-[6px] overflow-hidden">
             <div
@@ -197,12 +227,12 @@ export default function ResultCard({ result }) {
             </div>
             {evidenceOpen && (
               <div className="p-[14px] bg-[#0a311e]">
-                <p className="text-[#8b8fa8] font-semibold mb-[6px] text-[12px]">
-                  RETRIEVED CONTEXT
+                <p className="text-[#6aab86] text-[12px] font-semibold uppercase tracking-wide mb-[8px]">
+                  Retrieved Context
                 </p>
-                <pre className="text-[#8b8fa8] text-[12px] leading-[1.4] whitespace-pre-wrap font-mono bg-[#1e2130] p-[10px] rounded-[4px] border border-[#262730]">
+                <div className="text-[#cfd1db] text-[12px] leading-[1.7] whitespace-pre-wrap bg-[#061a0e] p-[10px] rounded-[4px] border border-[#262730]">
                   {result.evidence_text}
-                </pre>
+                </div>
               </div>
             )}
           </div>

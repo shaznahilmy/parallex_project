@@ -3,9 +3,15 @@ import io
 import re
 import torch
 import fitz  # PyMuPDF is used for PDF highlighting and merging
+import nltk
+from nltk.tokenize import sent_tokenize
+nltk.download("punkt", quiet=True)
+nltk.download("punkt_tab", quiet=True)
 from dotenv import load_dotenv
 load_dotenv()
 
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -27,46 +33,81 @@ from reportlab.lib import colors
 token = os.getenv("OPENAI_TOKEN")
 
 print("Loading Embedding Model & LLM Engine...")
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 
-# NLI model — cross-encoder/nli-roberta-base is a lightweight sentence-pair classifier
-# trained on MultiNLI + SNLI. It outputs P(entailment), P(neutral), P(contradiction)
-# for a (premise, hypothesis) pair. We use P(entailment) as our semantic alignment signal.
-# Label order from model config: {0: contradiction, 1: entailment, 2: neutral}
-print("Loading NLI Model (cross-encoder/nli-roberta-base)...")
+print("Loading NLI Model (cross-encoder/nli-deberta-v3-base)...")
 try:
-    _nli_tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-roberta-base")
-    _nli_model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-roberta-base")
+    _nli_tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-deberta-v3-base")
+    _nli_model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-deberta-v3-base")
     _nli_model.eval()  # disable dropout, inference only
+    # Resolve label indices dynamically — do not hardcode, ordering can vary across uploads
+    _id2label_lower = {v.lower(): k for k, v in _nli_model.config.id2label.items()}
+    NLI_ENTAILMENT_IDX    = _id2label_lower.get("entailment", 1)
+    NLI_CONTRADICTION_IDX = _id2label_lower.get("contradiction", 0)
+    NLI_NEUTRAL_IDX       = _id2label_lower.get("neutral", 2)
+    print(f"[NLI] Label map: {_nli_model.config.id2label}")
+    print(f"[NLI] Indices → Entailment={NLI_ENTAILMENT_IDX}, Contradiction={NLI_CONTRADICTION_IDX}, Neutral={NLI_NEUTRAL_IDX}")
     NLI_AVAILABLE = True
     print("NLI Model loaded.")
 except Exception as _nli_load_err:
     print(f"[NLI] WARNING: Could not load NLI model: {_nli_load_err}")
-    print("[NLI] entailment_score will default to 0.5 (neutral).")
+    print("[NLI] NLI scores will default to neutral (0.5 entailment, 0.0 contradiction).")
     NLI_AVAILABLE = False
+    NLI_ENTAILMENT_IDX    = 1
+    NLI_CONTRADICTION_IDX = 0
+    NLI_NEUTRAL_IDX       = 2
 
 # Using GitHub Models endpoint
 llm_engine = ChatOpenAI(
     # model="gpt-4o-mini",
-    # model="gpt-4o",
-    model="gpt-4.1-mini",
+    model="gpt-4o",
+    # model="gpt-4.1-mini",
     api_key=token,
     base_url="https://models.inference.ai.azure.com",
     temperature=0
 )
 
-# Path to the FAISS vector index saved during upload
-FAISS_INDEX_PATH = "temp/faiss_index"
+# Structured Output Schemas 
+# Using Pydantic models to enforce strict JSON output from the LLM
+class AdvocateResponse(BaseModel):
+    """Schema for the Advocate LLM's coverage assessment."""
+    match_status: Literal["Fully Covered", "Partially Covered", "Not Covered"] = Field(
+        description="Coverage verdict for the guideline."
+    )
+    reasoning: str = Field(
+        description="Concise explanation of the verdict."
+    )
+    exact_quote: Optional[str] = Field(
+        default=None,
+        description="The exact quote from the course content that supports the verdict. Null if Not Covered."
+    )
+    criterion_1: Literal[0, 1] = Field(
+        description="Concept Mentioned: Is the concept name or term explicitly present in the text? 0 or 1."
+    )
+    criterion_2: Literal[0, 1] = Field(
+        description="Mechanism Explained: Is the HOW or WHY of the concept explained? 0 or 1."
+    )
+    criterion_3: Literal[0, 1] = Field(
+        description="Example Provided: Is there a concrete example, analogy, code snippet, or demonstration? 0 or 1."
+    )
 
-# Path to the original course PDF uploaded by the user
-# Saved during upload so that generate_audit_pdf() can open and highlight it later
-COURSE_PDF_PATH = ""
+class AdversaryResponse(BaseModel):
+    """Schema for the Adversary LLM's cross-examination verdict."""
+    verdict: Literal["UPHELD", "DOWNGRADED"] = Field(
+        description="Whether the Advocate's verdict is upheld or downgraded."
+    )
+    reason: str = Field(
+        description="Explaination for the verdict."
+    )
+
+# Bind the structured output schemas to the LLM engine.
+# with_structured_output() forces the model to return valid JSON conforming to
+# the Pydantic schema, eliminating the need for manual string parsing entirely.
+advocate_llm  = llm_engine.with_structured_output(AdvocateResponse)
+adversary_llm = llm_engine.with_structured_output(AdversaryResponse)
 
 #  Advocate Prompt 
-"""
-The Advocate is the primary LLM pass. It assesses coverage and scores the
-depth of teaching across 3 rubric dimensions in a single call.
-"""
 prompt_template = """
 You are a strict academic auditor. Your job is to verify if specific concepts are explicitly taught in the course content.
 
@@ -77,35 +118,22 @@ AVAILABLE COURSE CONTENT:
 
 INSTRUCTIONS:
 1. Determine if the guideline is "Fully Covered", "Partially Covered", or "Not Covered".
-2. Start your response with exactly "Match: [Status]".
-3. Provide a concise explanation.
-4. You MUST provide the exact quote from the text that proves your decision. If it is Not Covered, write "Exact Quote: None".
+2. Provide a concise explanation.
+3. You MUST provide the exact quote from the text that proves your decision. If it is Not Covered, set exact_quote to null.
 
 RULES FOR GRADING:
 1. **EXACT MATCH REQUIRED:** If the guideline asks for a specific concept (e.g., "Sessions", "Cookies") and the content only talks about generic logic (e.g., "If statements", "Loops"), the answer MUST be "Not Covered".
 2. **NO ASSUMPTIONS:** Do not assume students "might" learn it. If the text is missing, it is "Not Covered".
 3. **BE HONEST:** It is okay to say "Not Covered".
 
-Answer format:
-Match: [Fully Covered / Partially Covered / Not Covered]
-Reasoning: [Explanation]
-Exact Quote: [The quote from the text]
-
-Semantic Depth Rubric — answer with 0 or 1 ONLY, no extra words:
-Criterion-1 (Concept Mentioned): Is the concept name or term explicitly present in the text? [0 or 1]
-Criterion-2 (Mechanism Explained): Is the HOW or WHY of the concept explained, not just named? [0 or 1]
-Criterion-3 (Example Provided): Is there a concrete example, analogy, code snippet, or demonstration? [0 or 1]
+Semantic Depth Rubric — answer with 0 or 1 ONLY:
+criterion_1 (Concept Mentioned): Is the concept name or term explicitly present in the text?
+criterion_2 (Mechanism Explained): Is the HOW or WHY of the concept explained, not just named?
+criterion_3 (Example Provided): Is there a concrete example, analogy, code snippet, or demonstration?
 """
 prompt = PromptTemplate(input_variables=["guideline", "context"], template=prompt_template)
 
 #  Adversary Prompt 
-"""
-The Adversary is a second LLM agent that receives the Advocate's verdict and
-actively tries to find flaws in it. It only runs when the Advocate claims
-coverage (Fully or Partially), because Not Covered needs no cross-examination.
-If it finds a meaningful gap, it outputs DOWNGRADED, which triggers a one-step
-downgrade: Fully Covered to Partially Covered, Partially Covered to Not Covered.
-"""
 adversary_prompt_template = """
 You are a strict academic auditor acting as a DEVIL'S ADVOCATE.
 
@@ -129,10 +157,6 @@ IF THE VERDICT IS "Partially Covered":
   - DOWNGRADE ONLY IF: the evidence is essentially a passing mention with no substance —
     no mechanism, no example, just a name drop. That belongs in "Not Covered".
   - UPHOLD if: there is any substantive teaching present, even if the full guideline is not met.
-
-Answer format (no extra text, no preamble):
-Verdict: [UPHELD / DOWNGRADED]
-Reason: [One sentence explaining your decision]
 """
 adversary_prompt = PromptTemplate(
     input_variables=["guideline", "evidence", "advocate_status", "advocate_reasoning"],
@@ -158,16 +182,16 @@ OUTPUT FORMAT:
 """
 extraction_prompt = PromptTemplate(input_variables=["text"], template=extraction_prompt_template)
 
-def _extract_text_with_fitz(pdf_path: str) -> list:
-    """
+"""
     Extracts text from every page of a PDF using PyMuPDF (fitz) and returns
-    a list of LangChain Document objects, one per page.
-
-    Using fitz here (instead of PyPDFLoader/PDFMiner) is intentional:
-    fitz is also the engine used by search_for() when applying highlights.
+    a list of LangChain Document objects, one per page
+    Using fitz here (instead of PyPDFLoader/PDFMiner) is intentional 
+    bc fitz is also the engine used by search_for() when applying highlights.
     Extracting and searching with the same engine guarantees the text
-    representation is identical, so highlight lookups reliably find matches.
-    """
+    representation is identical, so highlight lookups can find matches
+"""
+def extract_text(pdf_path: str) -> list:
+    
     doc = fitz.open(pdf_path)
     documents = []
     for page_num, page in enumerate(doc):
@@ -183,77 +207,54 @@ def _extract_text_with_fitz(pdf_path: str) -> list:
 
 # Loads a guidelines PDF and uses the LLM to extract a list of learning objectives
 def extract_guidelines(pdf_path):
-    # Using fitz instead of pyPDFLoader
-    pages = _extract_text_with_fitz(pdf_path)
+   
+    pages = extract_text(pdf_path)
 
-    # Combine every page into one string for the LLM to process
     full_text = "\n".join([p.page_content for p in pages])
 
     final_prompt = extraction_prompt.format(text=full_text)
     print("Extracting guidelines via LLM...")
     response = llm_engine.invoke(final_prompt)
-    response = response.content  # Unwrap the message object to get the plain string
+    response = response.content  
 
     # Parsing the numbered list the LLM returns into a clean Python list
     clean_guidelines = []
     for line in response.split('\n'):
         line = line.strip()
-        # Strip leading numbering/bullets (e.g. "1.", "-", "*") so the frontend doesn't double-number
+    
         clean_line = re.sub(r'^(\d+\.|\-|\*)\s*', '', line).strip()
-        if len(clean_line) > 10:  # Skipping blank or trivially short lines
+        if len(clean_line) > 10:  # Skipping blank lines
             clean_guidelines.append(clean_line)
 
     return clean_guidelines
 
+
 """
     Chunks the uploaded course content PDF into overlapping segments,
     embeds them, and saves a FAISS vector index to disk for later retrieval.
-    Also saves the path to the original PDF so it can be annotated at report time.
+    Returns the session-specific FAISS index path so the caller can pass it
+    to run_analysis()
     """
-def build_and_save_faiss(pdf_path):
-    global COURSE_PDF_PATH
-
-    # Extract text using fitz, same engine as search_for() used during highlighting
-    # so the indexed text and the PDF text layer are guaranteed to be consistent
-    docs = _extract_text_with_fitz(pdf_path)
-
-    # Remembering where the original PDF lives as its needed to generate the audit report
-    COURSE_PDF_PATH = pdf_path
+def build_and_save_faiss(pdf_path: str, session_faiss_path: str) -> bool:    
+    docs = extract_text(pdf_path)
 
     # Splitting the document into 500 char chunks with 50 char overlap
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
-    # Building the FAISS index and persisting it so run_analysis() can load it without re embedding
+    # Building the FAISS index and persisting 
     vector_db = FAISS.from_documents(chunks, embedding_model)
-    vector_db.save_local(FAISS_INDEX_PATH)
+    vector_db.save_local(session_faiss_path)
     return True
 
+#Runs cross-encoder/nli-deberta-v3-base on guideline and exact quote and returns all three NLI probabilities as a dict
+def _compute_nli_scores(premise: str, hypothesis: str) -> dict:   
 
-def _compute_entailment_score(premise: str, hypothesis: str) -> float:
-    """
-    Runs cross-encoder/nli-roberta-base on the (premise, hypothesis) pair and
-    returns P(entailment) in [0.0, 1.0].
-
-    Premise  = the retrieved course content chunks (what the document teaches).
-    Hypothesis = the guideline being audited (what should have been taught).
-
-    The model was trained on MultiNLI + SNLI, so it has seen academic and
-    general-domain entailment examples. Label order from the model config:
-        index 0 → contradiction
-        index 1 → entailment   ← this is what we extract
-        index 2 → neutral
-
-    A high score (~0.8+) means the content logically implies the guideline is covered.
-    A neutral score (~0.3-0.6) means the content is related but doesn't clearly entail it.
-    A low score (~0.0-0.2) alongside high contradiction probability means the content
-    actually conflicts with what the guideline expects.
-    """
     if not NLI_AVAILABLE:
-        return 0.5  # neutral default when model failed to load
+        return {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}
 
     try:
-        # Tokenise as a sentence pair; truncate so combined length fits within 512 tokens
+        # Tokenise as a sentence pair; the exact_quote is short so truncation is rarely needed
         inputs = _nli_tokenizer(
             premise,
             hypothesis,
@@ -265,41 +266,29 @@ def _compute_entailment_score(premise: str, hypothesis: str) -> float:
         with torch.no_grad():
             logits = _nli_model(**inputs).logits          # shape (1, 3)
         probs = torch.softmax(logits, dim=1)[0]           # shape (3,)
-        entailment_prob = probs[1].item()                 # index 1 = entailment
-        return round(entailment_prob, 4)
+        return {
+            "entailment":    round(probs[NLI_ENTAILMENT_IDX].item(), 4),
+            "contradiction": round(probs[NLI_CONTRADICTION_IDX].item(), 4),
+            "neutral":       round(probs[NLI_NEUTRAL_IDX].item(), 4),
+        }
     except Exception as e:
         print(f"[NLI] Inference error: {e}")
-        return 0.5
+        return {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}
 
-
-def run_analysis(guidelines: list):
-    """
-    Dual-Agent Adversarial Verification pipeline with Weighted NLI Scoring.
-
-    For each guideline:
-      1. FAISS retrieval  — 3 most relevant content chunks
-      2. Distance gate    — skips LLM when no chunk is close enough (L2 > 1.1)
-      3. NLI scoring      — P(entailment) from cross-encoder/nli-roberta-base
-      4. Agent 1 Advocate — coverage verdict + rubric depth scores (C1/C2/C3)
-      5. Agent 2 Adversary— cross-examines Advocate; downgrades verdict if flawed
-
-    Final weighted_nli_score:
-      0.5 × NLI entailment  +  0.3 × coverage label  +  0.2 × rubric depth
-    """
-    # Load the FAISS index that was built during the upload 
-    vector_db = FAISS.load_local(FAISS_INDEX_PATH, embedding_model, allow_dangerous_deserialization=True)
-
+#running the dual agent pipeline
+def run_analysis(guidelines: list, session_faiss_path: str):     
+    vector_db = FAISS.load_local(session_faiss_path, embedding_model, allow_dangerous_deserialization=True)
     audit_results = []
-
-    # L2 distance threshold: anything above 1.1 is considered semantically unrelated. lower means more similar
+    # L2 distance threshold
     DISTANCE_THRESHOLD = 1.1
-
     for rule in guidelines:
-        # Retrieve the 3 closest chunks, along with their L2 distances
-        results_with_scores = vector_db.similarity_search_with_score(rule, k=3)
+        # Retrieving the 5 most relevant chunks using MMR      
+        results_with_scores = vector_db.similarity_search_with_score(rule, k=1)
         best_match_distance = results_with_scores[0][1]
-
-        #Rule-based logic to skip the LLM entirely if no chunk is close enough
+        results_with_scores = [(doc, 0.0) for doc in vector_db.max_marginal_relevance_search(
+            rule, k=5, fetch_k=20, lambda_mult=0.5
+        )]
+        #Rule based logic
         if best_match_distance > DISTANCE_THRESHOLD:
             audit_results.append({
                 "guideline": rule,
@@ -310,94 +299,67 @@ def run_analysis(guidelines: list):
                 "adversary_verdict": "N/A",
                 "adversary_reason": "",
                 "entailment_score": 0.0,
+                "contradiction_score": 0.0,
+                "neutral_score": 0.0,
+                "nli_tripwire_fired": False,
                 "weighted_nli_score": 0,
                 "rubric": {"concept_mentioned": 0, "mechanism_explained": 0, "example_provided": 0}
             })
-            continue
-
-        # Combine the retrieved chunks into a single context string for the LLM
-        context_text = "\n".join([doc.page_content for doc, score in results_with_scores])
-
-        """
-        Normalise whitespace in the context before passing to the LLM.
-        fitz.get_text() inserts \n at every line end, so a phrase spanning two
-        lines in the PDF becomes "word1\nword2" in the extracted text. If the LLM
-        quotes that phrase it may write "word1 word2" (natural space), and
-        search_for() won't find it because the original PDF has a line-break there.
-        Collapsing all whitespace runs to a single space means the LLM's quote
-        and search_for() are working with the same normalised representation.
-        """
+            continue       
+        context_text = "\n".join([doc.page_content for doc, score in results_with_scores])       
         context_text_for_llm = " ".join(context_text.split())
-
-        """
-        NLI entailment score that runs before the LLM calls so it is independent.
-        Use the normalised context so the NLI text matches what we give the LLM
-        """
-        entailment_score = _compute_entailment_score(context_text_for_llm, rule)
-        print(f"[NLI] P(entailment) for \"{rule[:55]}...\": {entailment_score}")
-        
-        """
-        The Advocate LLM  
-        Asks the LLM to assess coverage, provide an exact quote, and score
-        the depth of teaching across 3 rubrics
-        """
+       
         final_prompt = prompt.format(guideline=rule, context=context_text_for_llm)
-        response = llm_engine.invoke(final_prompt).content
+        advocate_result: AdvocateResponse = advocate_llm.invoke(final_prompt)
 
-        # Parsing the structured Advocate response line by line
-        match_status = "Unknown"
-        reasoning = "Parsing error"
-        exact_quote = "None"
-        criterion_1 = 0  # Concept Mentioned
-        criterion_2 = 0  # Mechanism Explained
-        criterion_3 = 0  # Example Provided
+        match_status  = advocate_result.match_status
+        reasoning     = advocate_result.reasoning
+        exact_quote   = advocate_result.exact_quote or "None"
+        criterion_1   = advocate_result.criterion_1  # Concept Mentioned
+        criterion_2   = advocate_result.criterion_2  # Mechanism Explained
+        criterion_3   = advocate_result.criterion_3  # Example Provided
 
-        for line in response.split('\n'):
-            line = line.strip()
-            if line.startswith("Match:"):
-                match_status = line.replace("Match:", "").replace("[", "").replace("]", "").strip()
-            elif line.startswith("Reasoning:"):
-                reasoning = line.replace("Reasoning:", "").strip()
-            elif line.startswith("Exact Quote:"):
-                exact_quote = line.replace("Exact Quote:", "").strip()
-            elif line.startswith("Criterion-1"):
-                criterion_1 = 1 if "1" in line.split(":")[-1] else 0
-            elif line.startswith("Criterion-2"):
-                criterion_2 = 1 if "1" in line.split(":")[-1] else 0
-            elif line.startswith("Criterion-3"):
-                criterion_3 = 1 if "1" in line.split(":")[-1] else 0
+        #NLI Faithfulness Check
+        nli_scores = {"entailment": 0.5, "contradiction": 0.0, "neutral": 0.5}  # safe defaults
+        has_valid_quote = bool(exact_quote and exact_quote.strip().lower() not in ("none", ""))
 
-        """
-        Drift score is calculated after the adversary runs (below)
-        so it correctly reflects the final match_status, not the Advocate's initial claim.
-        """
+        if has_valid_quote and "Not Covered" not in match_status:
+            nli_scores = _compute_nli_scores(exact_quote, rule)
+            print(
+                f"[NLI Faithfulness] "
+                f"E={nli_scores['entailment']:.2f}  "
+                f"C={nli_scores['contradiction']:.2f}  "
+                f"N={nli_scores['neutral']:.2f}  "
+                f"| Quote: \"{exact_quote[:60]}...\""
+            )
+        else:
+            print(f"[NLI Faithfulness] Skipped — no valid quote or verdict is 'Not Covered'.")
 
-        """
-        The Adversary LLM 
-        Only runs when the Advocate claims coverage      
-        """
+        #NLI Tripwire
+        nli_tripwire = nli_scores["contradiction"] > 0.40
+        should_run_adversary = (
+            "Not Covered" not in match_status and (
+                "Fully Covered" in match_status or  
+                nli_tripwire   
+            )
+        )        
         adversary_verdict = "N/A"
         adversary_reason = ""
 
-        if "Not Covered" not in match_status:
-            print(f"[ADVERSARY] Cross-examining: \"{rule[:60]}...\"")
+        if should_run_adversary:
+            trigger_reason = "NLI tripwire (contradiction detected)" if nli_tripwire else "Fully Covered claim"
+            print(f"[ADVERSARY] Cross-examining ({trigger_reason}): \"{rule[:60]}...\"")
             adv_prompt = adversary_prompt.format(
                 guideline=rule,
                 evidence=context_text,
                 advocate_status=match_status,
                 advocate_reasoning=reasoning
             )
-            adv_response = llm_engine.invoke(adv_prompt).content
+            adv_result: AdversaryResponse = adversary_llm.invoke(adv_prompt)
+            adversary_verdict = adv_result.verdict
+            adversary_reason  = adv_result.reason
 
-            # Parse the Adversary's verdict and reason
-            for line in adv_response.split('\n'):
-                line = line.strip()
-                if line.startswith("Verdict:"):
-                    adversary_verdict = line.replace("Verdict:", "").strip()
-                elif line.startswith("Reason:"):
-                    adversary_reason = line.replace("Reason:", "").strip()
-
-            # One-step demotion if the Adversary found a flaw, fully to partial and partial to not covered       
+            # One step demotion
             if adversary_verdict == "DOWNGRADED":
                 print(f"[ADVERSARY] DOWNGRADED — {adversary_reason}")
                 if "Fully Covered" in match_status:
@@ -407,61 +369,53 @@ def run_analysis(guidelines: list):
             else:
                 print(f"[ADVERSARY] UPHELD — {adversary_reason}")
 
-        """
-        Weighted NLI Score computed after the Adversary finalises match_status.
-        Weights are calibrated to reflect actual signal quality in this domain:
-        NLI entailment (0.2): cross-encoder/nli-roberta-base was trained on short
-        sentence pairs (MultiNLI/SNLI). Applied to chunked
-        course content vs guidelines, it consistently scores 1–10% regardless of true coverage
-        due to register mismatch. Treated as a weak tiebreaker.
-        Coverage label  (0.5): dual-agent LLM verdict — most reliable signal.
-        Fully=1.0, Partially=0.5, Not Covered=0.0
-        Rubric depth    (0.3): quality of teaching (concept + mechanism + example).
-       
-        These weights produce intuitive ranges:
-        Fully Covered + all rubric criteria met  → ~80%
-        Partially Covered + all rubric criteria  → ~55–57%
-        Not Covered                              → ~1–5%
-        """
+        #Weighted Audit Score
         coverage_map = {"Fully Covered": 1.0, "Partially Covered": 0.5, "Not Covered": 0.0}
-        coverage_score = coverage_map.get(match_status, 0.0)
+        coverage_score    = coverage_map.get(match_status, 0.0)
         raw_rubric_fraction = (criterion_1 + criterion_2 + criterion_3) / 3
+        entailment_score  = nli_scores["entailment"]
 
         weighted_nli_score = round(
-            (0.2 * entailment_score + 0.5 * coverage_score + 0.3 * raw_rubric_fraction) * 100
+            (0.40 * entailment_score + 0.40 * coverage_score + 0.20 * raw_rubric_fraction) * 100
         )
-        print(f"[SCORE] weighted_nli={weighted_nli_score}% "
-              f"(nli={entailment_score:.2f}×0.2, cov={coverage_score}×0.5, rubric={raw_rubric_fraction:.2f}×0.3)")
+        print(
+            f"[SCORE] audit_score={weighted_nli_score}% "
+            f"(faithfulness={entailment_score:.2f}×0.40, "
+            f"coverage={coverage_score}×0.40, "
+            f"rubric={raw_rubric_fraction:.2f}×0.20)"
+        )
 
         audit_results.append({
             "guideline": rule,
-            "match_status": match_status,           # final verdict (may be downgraded by Adversary)
+            "match_status": match_status, # final verdict 
             "reasoning": reasoning,
             "exact_quote": exact_quote,
             "evidence_text": context_text,
-            "adversary_verdict": adversary_verdict, # "UPHELD" / "DOWNGRADED" / "N/A"
+            "adversary_verdict": adversary_verdict,
             "adversary_reason": adversary_reason,
-            "entailment_score": entailment_score,   # P(entailment) from NLI model, 0.0–1.0
-            "weighted_nli_score": weighted_nli_score, # final composite score, 0–100
+            "entailment_score": entailment_score,      # P(entailment) from NLI faithfulness check
+            "contradiction_score": nli_scores["contradiction"],  # P(contradiction) tripwire signal
+            "neutral_score": nli_scores["neutral"],    # P(neutral)
+            "nli_tripwire_fired": nli_tripwire,        # true if NLI forced the Adversary to run
+            "weighted_nli_score": weighted_nli_score, 
             "rubric": {
                 "concept_mentioned": criterion_1,
                 "mechanism_explained": criterion_2,
                 "example_provided": criterion_3
             }
         })
-
     return audit_results
 
 
 #  PDF Generation
-
+"""
+Strips surrounding quotation marks that the LLM adds around its Exact Quote answer.
+Handles both straight quotes (") and curly/smart quotes (\u201c \u201d \u2018 \u2019).
+Also normalises internal whitespace runs to single spaces so that search_for()
+can match phrases that span line breaks in the original PDF.
+"""    
 def _clean_quote(quote: str) -> str:
-    """
-    Strips surrounding quotation marks that the LLM adds around its Exact Quote answer.
-    Handles both straight quotes (") and curly/smart quotes (\u201c \u201d \u2018 \u2019).
-    Also normalises internal whitespace runs to single spaces so that search_for()
-    can match phrases that span line breaks in the original PDF.
-    """
+   
     q = quote.strip()
     # Remove matching outer quotes loop so nested pairs are all stripped
     while len(q) >= 2 and q[0] in ('"', '\u201c', '\u2018', "'") and q[-1] in ('"', '\u201d', '\u2019', "'"):
@@ -470,23 +424,8 @@ def _clean_quote(quote: str) -> str:
     q = " ".join(q.split())
     return q
 
-
-def _search_and_highlight_quote(page, quote: str, color: tuple):
-    """
-    Attempts to find and highlight a quote on a single PDF page using two strategies
-
-    1 Full match:
-        Search for the entire cleaned quote string. Works most of the time when
-        the LLM's extracted text matches the PDF's text layer.
-
-    2. Phrase fragments:
-        If the full match fails for eg because PyPDFLoader normalised whitespace
-        or the LLM paraphrased slightly, split the quote into individual
-        sentences/clauses and highlight each fragment that IS found.
-        Minimum fragment length is 20 characters to avoid false positives.
-
-    Returns True if at least one highlight was applied.
-    """
+#Attempts to find and highlight a quote on a single PDF page using two strategies
+def _search_and_highlight_quote(page, quote: str, color: tuple):    
     highlighted = False
 
     # Strip any surrounding quotation marks the LLM may have added
@@ -494,7 +433,7 @@ def _search_and_highlight_quote(page, quote: str, color: tuple):
     if not quote:
         return False
 
-    # Strategy 1: try the whole quote first
+    # Strategy 1 to try the whole quote first    
     instances = page.search_for(quote)
     if instances:
         annot = page.add_highlight_annot(instances)
@@ -502,16 +441,22 @@ def _search_and_highlight_quote(page, quote: str, color: tuple):
         annot.update()
         return True
 
-    # Strategy 2: break into sentence/clause fragments and search each.
-    # Split on sentence-ending punctuation (. ! ?) or on commas for long clauses
-    fragments = [f.strip() for f in re.split(r'[.!?,;]', quote) if len(f.strip()) >= 20]
-    for fragment in fragments:
-        instances = page.search_for(fragment)
-        if instances:
-            annot = page.add_highlight_annot(instances)
-            annot.set_colors(stroke=color)
-            annot.update()
-            highlighted = True
+    # Strategy 2 to with NLTK span expansion   
+    sentences = sent_tokenize(quote)
+    processed_spans = set()  # deduplicate: skip spans already highlighted on this page
+    for i in range(len(sentences)):
+        for j in range(i + 1, len(sentences) + 1):
+            span = " ".join(sentences[i:j])
+            if len(span) < 20 or span in processed_spans:
+                continue
+            instances = page.search_for(span)
+            if instances:
+                annot = page.add_highlight_annot(instances)
+                annot.set_colors(stroke=color)
+                annot.update()
+                processed_spans.add(span)
+                highlighted = True
+                break  # stop growing once this starting sentence has a match
 
     return highlighted
 
@@ -547,23 +492,11 @@ def highlight_text_in_pdf(input_pdf_path: str, output_pdf_path: str, exact_quote
     doc.save(output_pdf_path)
     doc.close()
 
-
-def generate_audit_pdf(audit_results: list, output_path: str):
-    """
-    Produces the audit report PDF in two sections:
-
-    Summary page created using reportLab
-              
-    The original course PDF uploaded by the user, with 
-    text highlight on every passage that was identified as evidence for a Fully or Partially Covered guideline.
-    The formatting are exactly as the user uploaded
-
-    The two parts are merged using PyMuPDF into the single output file.
-    """
+# Produces the audit report PDF
+def generate_audit_pdf(audit_results: list, output_path: str, course_pdf_path: str):   
 
     # Building the summary page with reportlab
-    # We write to a BytesIO buffer in memory rather than a file,
-    # because we'll pass it straight to PyMuPDF for merging
+    # writing to a BytesIO buffer in memory rather than a file because we'll pass it straight to PyMuPDF for merging
     summary_buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         summary_buffer,
@@ -663,8 +596,8 @@ def generate_audit_pdf(audit_results: list, output_path: str):
     # Writing the annotated course PDF to a temp path. It will be cleaned up below
     annotated_course_path = output_path + "_course_annotated.pdf"
 
-    if COURSE_PDF_PATH and os.path.exists(COURSE_PDF_PATH):
-        highlight_text_in_pdf(COURSE_PDF_PATH, annotated_course_path, exact_quotes)
+    if course_pdf_path and os.path.exists(course_pdf_path):
+        highlight_text_in_pdf(course_pdf_path, annotated_course_path, exact_quotes)
     else:
         # Safety fallback so that if no course PDF is on disk, insert a blank page instead of crashing
         print("Warning: original course PDF not found, inserting blank placeholder.")

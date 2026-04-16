@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import Footer from "../components/Footer";
-import UploadZone from "../components/UploadZone";
-import NavBar from "../components/NavBar";
-import handwaveImg from "../assets/handwave.png";
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import Footer from '@/components/Footer.jsx'
+import UploadZone from '@/components/UploadZone.jsx'
+import NavBar from '@/components/NavBar.jsx'
 
 export default function Home() {
   const navigate = useNavigate();
@@ -19,11 +18,14 @@ export default function Home() {
   const [contentMessageType, setContentMessageType] = useState(null);
   const [contentFileName, setContentFileName] = useState("");
   const [isContentReady, setIsContentReady] = useState(false);
+  // session_id returned by upload-content endpoint to uniquely identify the FAISS index
+  // and course PDF for this upload so concurrent users dont share state
+  const [sessionId, setSessionId] = useState(null);
 
   // Typing effect state
   const [displayedText, setDisplayedText] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
-  const typingText = "Hi! Welcome to Parallex";
+  const typingText = "Hi, Welcome to Parallex!";
 
   useEffect(() => {
     if (currentIndex < typingText.length) {
@@ -40,6 +42,19 @@ export default function Home() {
   const handleGuidelineUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // 25 MB hard limit for guidelines — large guideline PDFs are unlikely;
+    // if it's bigger the LLM extraction call will time out anyway.
+    const MAX_GUIDELINE_MB = 25;
+    if (file.size > MAX_GUIDELINE_MB * 1024 * 1024) {
+      setGuideFileName(file.name);
+      setGuideMessage(
+        `File too large. Maximum size is ${MAX_GUIDELINE_MB} MB.`,
+      );
+      setGuideMessageType("error");
+      e.target.value = ""; // reset input so the same file can be reselected after trimming
+      return;
+    }
 
     // resetting content if already uploaded
     if (isContentReady || contentFileName) {
@@ -82,6 +97,20 @@ export default function Home() {
   const handleContentUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // 50 MB hard limit for course content — keeps FAISS indexing and fitz
+    // text extraction within reasonable memory and time budgets.
+    const MAX_CONTENT_MB = 50;
+    if (file.size > MAX_CONTENT_MB * 1024 * 1024) {
+      setContentFileName(file.name);
+      setContentMessage(
+        `File too large. Maximum size is ${MAX_CONTENT_MB} MB.`,
+      );
+      setContentMessageType("error");
+      e.target.value = "";
+      return;
+    }
+
     setContentFileName(file.name);
     setIsUploadingContent(true);
     setContentMessage("Indexing course content...");
@@ -89,7 +118,12 @@ export default function Home() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      await axios.post("http://localhost:8000/upload-content", formData);
+      const res = await axios.post(
+        "http://localhost:8000/upload-content",
+        formData,
+      );
+      // Storing the session_id so it can be sent with the audit request
+      setSessionId(res.data.session_id);
       setIsContentReady(true);
       setContentMessage("Course content indexed and ready!");
       setContentMessageType("success");
@@ -119,10 +153,11 @@ export default function Home() {
       return;
     }
 
-    // Navigating to results page immediately with guidelines
+    // Navigating to results page immediately with guidelines and session
     navigate("/results", {
       state: {
         guidelines,
+        sessionId,
       },
     });
   };
@@ -131,7 +166,7 @@ export default function Home() {
 
   return (
     <>
-      <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans pr-[60px] pb-[20px] py-5">
+      <div className="min-h-screen flex flex-col bg-[#0e1712] font-sans py-5">
         <NavBar />
 
         <main className="flex-grow  mx-auto w-full py-8 px-[32px] overflow-x-hidden">
@@ -140,13 +175,6 @@ export default function Home() {
             {displayedText}
             {currentIndex < typingText.length && (
               <span className="animate-pulse">|</span>
-            )}
-            {currentIndex >= typingText.length && (
-              <img
-                src={handwaveImg}
-                alt="wave"
-                className="inline w-[36px] h-[32px] object-contain align-middle ml-[8px]"
-              />
             )}
           </h2>
 

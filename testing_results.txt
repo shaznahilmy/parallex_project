@@ -1,4 +1,5 @@
 Total tested: 35
+gpt-4.0 (initially tested before the dual agent pipeline but old ground truths)
 Overall Accuracy: 80.0%
 
 Classification Report:
