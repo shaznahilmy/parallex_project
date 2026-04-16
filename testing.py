@@ -18,6 +18,153 @@ from sklearn.metrics import classification_report, confusion_matrix
 import numpy as np
 
 
+# TEST_PAIRS = [
+#     {
+#         "pair_id": 1,
+#         "content_pdf": "educational_dataset/cloud.pdf",
+#         "guidelines": [
+#             "Explain the CAP Theorem and its implications on distributed databases, specifically regarding network partitions",
+#             "Design a containerized application using Docker and orchestrate it using Kubernetes deployments",
+#             "Compare and contrast the Strangler Fig pattern with the Anti-Corruption Layer pattern for monolith-to-microservices migration",
+#             "Implement a quantum cryptography key distribution protocol using Qiskit.", 
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Not Covered",
+#             "Fully Covered",
+#             "Not Covered",
+#         ]
+#     },
+#     {
+#         "pair_id": 2,
+#         "content_pdf": "educational_dataset/concurrent.pdf",
+#         "guidelines": [
+#             "Differentiate between Processes and Threads, explaining memory models and context switching overheads using real-world analogies",
+#             "Implement thread safety using the `synchronized` keyword to prevent Race Conditions in shared-resource scenarios (e.g., Banking Systems)",
+#             "Analyse Deadlock scenarios and apply the **Banker's Algorithm** to mathematically prevent resource starvation",
+#             "Implement the **Actor Model** for distributed message passing as an alternative to shared-state concurrency",
+#         ],
+#         "ground_truth": [
+#             "Partially Covered",
+#             "Fully Covered",
+#             "Not Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 3,
+#         "content_pdf": "educational_dataset/dm.pdf",
+#         "guidelines": [
+#             "Calculate and interpret the Customer Acquisition Cost (CAC) to Lifetime Value (LTV) ratio for subscription-based businesses",
+#             "Apply the AARRR (Pirate Metrics) framework to analyze the customer lifecycle in a SaaS business model",
+#             "Differentiate between multi-touch attribution models, specifically Linear, Time Decay, and U-Shaped attribution",
+#             "Execute programmatic ad buying using Demand-Side Platforms (DSP) and RealTime Bidding (RTB)",   
+#         ],
+#         "ground_truth": [
+#             "Partially Covered",
+#             "Not Covered",
+#             "Partially Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 4,
+#         "content_pdf": "educational_dataset/network_forensics.pdf",
+#         "guidelines": [
+#             "Analyze network traffic using Wireshark to identify TCP SYN flood attacks.",
+#             "Extract and reconstruct HTTP objects from packet capture (.cap or .pcap) files.",
+#             "Perform penetration testing using Kali Linux to exploit vulnerable web applications",
+#             "Formulate a linear programming model to minimize transportation costs using the Simplex method",
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Fully Covered",
+#             "Partially Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 5,
+#         "content_pdf": "educational_dataset/nlp.pdf",
+#         "guidelines": [
+#             "Explain the mathematical mechanics of the Attention mechanism, specifically the use of Query, Key, and Value matrices",
+#             "Differentiate between extractive and abstractive text summarization paradigms",
+#             "Fine-tune a pre-trained Large Language Model using the LoRA (Low-Rank Adaptation) parameter-efficient method.",
+#             "Calculate the yield strength and tensile strain of reinforced concrete under heavy load conditions",           
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Fully Covered",
+#             "Partially Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 6,
+#         "content_pdf": "educational_dataset/psychology.pdf",
+#         "guidelines": [
+#             "Describe the role of the hippocampus in the consolidation of declarative memories.",
+#             "Analyze the impact of dopamine depletion within the basal ganglia on voluntary motor function.",
+#             "Explain the psychological phenomenon of Prosopagnosia following bilateral lesions to the fusiform gyrus",         
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Partially Covered",
+#             "Partially Covered",          
+#         ]
+#     },
+#      {
+#         "pair_id": 7,
+#         "content_pdf": "educational_dataset/robotics.pdf",
+#         "guidelines": [
+#             "Calculate the forward kinematics of a 6-DOF robotic arm using Denavit-Hartenberg (DH) parameters",
+#             "Implement a Proportional-Integral-Derivative (PID) controller for motor trajectory tracking",
+#             "Design a path-planning algorithm using the Rapidly-exploring Random Tree (RRT) method",
+#             "Explain the physiological effects of beta-blockers on cardiac arrhythmias.",
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Fully Covered",
+#             "Partially Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 8,
+#         "content_pdf": "educational_dataset/sa.pdf",
+#         "guidelines": [
+#             "Apply the principles of the Twelve-Factor App methodology for building scalable software-as-a-service (SaaS)",
+#             "Compare Blue-Green Deployment with Canary releases to minimize production downtime",
+#             "Implement a Circuit Breaker pattern to prevent cascading failures in distributed microservices",
+#             "Describe the synthesis of Adenosine Triphosphate (ATP) during cellular respiration.",           
+
+#         ],
+#         "ground_truth": [
+#             "Partially Covered",
+#             "Partially Covered",
+#             "Not Covered",
+#             "Not Covered",
+#         ]
+#     },
+#      {
+#         "pair_id": 9,
+#         "content_pdf": "educational_dataset/webdev.pdf",
+#         "guidelines": [
+#             "Demonstrate an understanding of the relationship between client-side (HTML/CSS) and server-side (PHP) scripting",
+#             "Utilize PHP control structures (loops) and data structures (arrays) to manipulate data",
+#             "Implement database connectivity using MySQLi or PDO to retrieve and display records",
+#             "Apply security best practices to prevent SQL Injection attacks",
+#         ],
+#         "ground_truth": [
+#             "Fully Covered",
+#             "Fully Covered",           
+#             "Fully Covered",
+#             "Not Covered",
+#         ]
+#     },
+   
+# ]
+
 TEST_PAIRS = [
     {
         "pair_id": 1,
@@ -26,14 +173,14 @@ TEST_PAIRS = [
             "Explain the CAP Theorem and its implications on distributed databases, specifically regarding network partitions",
             "Design a containerized application using Docker and orchestrate it using Kubernetes deployments",
             "Compare and contrast the Strangler Fig pattern with the Anti-Corruption Layer pattern for monolith-to-microservices migration",
-            "Implement a quantum cryptography key distribution protocol using Qiskit.", 
+            "Implement a quantum cryptography key distribution protocol using Qiskit.",
         ],
         "ground_truth": [
-            "Fully Covered",
+            "Partially Covered",
+            "Partially Covered",
+            "Partially Covered",
             "Not Covered",
-            "Fully Covered",
-            "Not Covered",
-        ]
+        ],
     },
     {
         "pair_id": 2,
@@ -47,27 +194,27 @@ TEST_PAIRS = [
         "ground_truth": [
             "Partially Covered",
             "Fully Covered",
+            "Partially Covered",
             "Not Covered",
-            "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 3,
         "content_pdf": "educational_dataset/dm.pdf",
         "guidelines": [
             "Calculate and interpret the Customer Acquisition Cost (CAC) to Lifetime Value (LTV) ratio for subscription-based businesses",
             "Apply the AARRR (Pirate Metrics) framework to analyze the customer lifecycle in a SaaS business model",
             "Differentiate between multi-touch attribution models, specifically Linear, Time Decay, and U-Shaped attribution",
-            "Execute programmatic ad buying using Demand-Side Platforms (DSP) and RealTime Bidding (RTB)",   
+            "Execute programmatic ad buying using Demand-Side Platforms (DSP) and RealTime Bidding (RTB)",
         ],
         "ground_truth": [
+            "Fully Covered",
             "Partially Covered",
+            "Fully Covered",
             "Not Covered",
-            "Partially Covered",
-            "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 4,
         "content_pdf": "educational_dataset/network_forensics.pdf",
         "guidelines": [
@@ -77,43 +224,45 @@ TEST_PAIRS = [
             "Formulate a linear programming model to minimize transportation costs using the Simplex method",
         ],
         "ground_truth": [
-            "Fully Covered",
+            "Partially Covered",
             "Fully Covered",
             "Partially Covered",
             "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 5,
         "content_pdf": "educational_dataset/nlp.pdf",
         "guidelines": [
             "Explain the mathematical mechanics of the Attention mechanism, specifically the use of Query, Key, and Value matrices",
             "Differentiate between extractive and abstractive text summarization paradigms",
             "Fine-tune a pre-trained Large Language Model using the LoRA (Low-Rank Adaptation) parameter-efficient method.",
-            "Calculate the yield strength and tensile strain of reinforced concrete under heavy load conditions",           
+            "Calculate the yield strength and tensile strain of reinforced concrete under heavy load conditions",
         ],
         "ground_truth": [
             "Fully Covered",
-            "Fully Covered",
+            "Partially Covered",
             "Partially Covered",
             "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 6,
         "content_pdf": "educational_dataset/psychology.pdf",
         "guidelines": [
             "Describe the role of the hippocampus in the consolidation of declarative memories.",
             "Analyze the impact of dopamine depletion within the basal ganglia on voluntary motor function.",
-            "Explain the psychological phenomenon of Prosopagnosia following bilateral lesions to the fusiform gyrus",         
+            "Explain the psychological phenomenon of Prosopagnosia following bilateral lesions to the fusiform gyrus",
+            "Calculate the aerodynamic drag coefficient of a streamlined body at supersonic speeds.",
         ],
         "ground_truth": [
             "Fully Covered",
             "Partially Covered",
-            "Partially Covered",          
-        ]
+            "Partially Covered",
+            "Not Covered",
+        ],
     },
-     {
+    {
         "pair_id": 7,
         "content_pdf": "educational_dataset/robotics.pdf",
         "guidelines": [
@@ -123,30 +272,29 @@ TEST_PAIRS = [
             "Explain the physiological effects of beta-blockers on cardiac arrhythmias.",
         ],
         "ground_truth": [
-            "Fully Covered",
+            "Partially Covered",
             "Fully Covered",
             "Partially Covered",
             "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 8,
         "content_pdf": "educational_dataset/sa.pdf",
         "guidelines": [
             "Apply the principles of the Twelve-Factor App methodology for building scalable software-as-a-service (SaaS)",
             "Compare Blue-Green Deployment with Canary releases to minimize production downtime",
             "Implement a Circuit Breaker pattern to prevent cascading failures in distributed microservices",
-            "Describe the synthesis of Adenosine Triphosphate (ATP) during cellular respiration.",           
-
+            "Describe the synthesis of Adenosine Triphosphate (ATP) during cellular respiration.",
         ],
         "ground_truth": [
             "Partially Covered",
             "Partially Covered",
+            "Partially Covered",
             "Not Covered",
-            "Not Covered",
-        ]
+        ],
     },
-     {
+    {
         "pair_id": 9,
         "content_pdf": "educational_dataset/webdev.pdf",
         "guidelines": [
@@ -156,15 +304,13 @@ TEST_PAIRS = [
             "Apply security best practices to prevent SQL Injection attacks",
         ],
         "ground_truth": [
+            "Partially Covered",
+            "Partially Covered",
+            "Partially Covered",
             "Fully Covered",
-            "Fully Covered",           
-            "Fully Covered",
-            "Not Covered",
-        ]
+        ],
     },
-   
 ]
-
 
 y_true = []   # adds all human assigned ground truth labels
 y_pred = []   # adds all parallex predictions

@@ -1,0 +1,304 @@
+{
+  "rows": [
+    {
+      "pair_id": 1,
+      "guideline": "Explain the CAP Theorem and its implications on distributed databases,...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.479,
+      "cosine_sim": 0.8853,
+      "bleu_score": 0.0142
+    },
+    {
+      "pair_id": 1,
+      "guideline": "Design a containerized application using Docker and orchestrate it usi...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 0.7516,
+      "cosine_sim": 0.7176,
+      "bleu_score": 0.004
+    },
+    {
+      "pair_id": 1,
+      "guideline": "Compare and contrast the Strangler Fig pattern with the Anti-Corruptio...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.5008,
+      "cosine_sim": 0.8746,
+      "bleu_score": 0.0337
+    },
+    {
+      "pair_id": 1,
+      "guideline": "Implement a quantum cryptography key distribution protocol using Qiski...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.8166,
+      "cosine_sim": 0.0,
+      "bleu_score": 0.003
+    },
+    {
+      "pair_id": 2,
+      "guideline": "Differentiate between Processes and Threads, explaining memory models ...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.7371,
+      "cosine_sim": 0.7283,
+      "bleu_score": 0.0026
+    },
+    {
+      "pair_id": 2,
+      "guideline": "Implement thread safety using the `synchronized` keyword to prevent Ra...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.5166,
+      "cosine_sim": 0.8665,
+      "bleu_score": 0.005
+    },
+    {
+      "pair_id": 2,
+      "guideline": "Analyse Deadlock scenarios and apply the **Banker's Algorithm** to mat...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 0.8409,
+      "cosine_sim": 0.6464,
+      "bleu_score": 0.0027
+    },
+    {
+      "pair_id": 2,
+      "guideline": "Implement the **Actor Model** for distributed message passing as an al...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.1243,
+      "cosine_sim": 0.368,
+      "bleu_score": 0.0027
+    },
+    {
+      "pair_id": 3,
+      "guideline": "Calculate and interpret the Customer Acquisition Cost (CAC) to Lifetim...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.4114,
+      "cosine_sim": 0.9154,
+      "bleu_score": 0.0436
+    },
+    {
+      "pair_id": 3,
+      "guideline": "Apply the AARRR (Pirate Metrics) framework to analyze the customer lif...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 0.7615,
+      "cosine_sim": 0.7101,
+      "bleu_score": 0.0037
+    },
+    {
+      "pair_id": 3,
+      "guideline": "Differentiate between multi-touch attribution models, specifically Lin...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.6336,
+      "cosine_sim": 0.7993,
+      "bleu_score": 0.019
+    },
+    {
+      "pair_id": 3,
+      "guideline": "Execute programmatic ad buying using Demand-Side Platforms (DSP) and R...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.2392,
+      "cosine_sim": 0.2322,
+      "bleu_score": 0.0029
+    },
+    {
+      "pair_id": 4,
+      "guideline": "Analyze network traffic using Wireshark to identify TCP SYN flood atta...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.4181,
+      "cosine_sim": 0.9126,
+      "bleu_score": 0.1174
+    },
+    {
+      "pair_id": 4,
+      "guideline": "Extract and reconstruct HTTP objects from packet capture (.cap or .pca...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.4564,
+      "cosine_sim": 0.8959,
+      "bleu_score": 0.2094
+    },
+    {
+      "pair_id": 4,
+      "guideline": "Perform penetration testing using Kali Linux to exploit vulnerable web...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.7884,
+      "cosine_sim": 0.6892,
+      "bleu_score": 0.007
+    },
+    {
+      "pair_id": 4,
+      "guideline": "Formulate a linear programming model to minimize transportation costs ...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.8801,
+      "cosine_sim": 0.0,
+      "bleu_score": 0.0032
+    },
+    {
+      "pair_id": 5,
+      "guideline": "Explain the mathematical mechanics of the Attention mechanism, specifi...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.5762,
+      "cosine_sim": 0.834,
+      "bleu_score": 0.0684
+    },
+    {
+      "pair_id": 5,
+      "guideline": "Differentiate between extractive and abstractive text summarization pa...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.6502,
+      "cosine_sim": 0.7886,
+      "bleu_score": 0.0072
+    },
+    {
+      "pair_id": 5,
+      "guideline": "Fine-tune a pre-trained Large Language Model using the LoRA (Low-Rank ...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 1.0486,
+      "cosine_sim": 0.4502,
+      "bleu_score": 0.0063
+    },
+    {
+      "pair_id": 5,
+      "guideline": "Calculate the yield strength and tensile strain of reinforced concrete...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.6744,
+      "cosine_sim": 0.0,
+      "bleu_score": 0.0034
+    },
+    {
+      "pair_id": 6,
+      "guideline": "Describe the role of the hippocampus in the consolidation of declarati...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.4952,
+      "cosine_sim": 0.8774,
+      "bleu_score": 0.055
+    },
+    {
+      "pair_id": 6,
+      "guideline": "Analyze the impact of dopamine depletion within the basal ganglia on v...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.2376,
+      "cosine_sim": 0.9718,
+      "bleu_score": 0.35
+    },
+    {
+      "pair_id": 6,
+      "guideline": "Explain the psychological phenomenon of Prosopagnosia following bilate...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.6165,
+      "cosine_sim": 0.81,
+      "bleu_score": 0.0438
+    },
+    {
+      "pair_id": 7,
+      "guideline": "Calculate the forward kinematics of a 6-DOF robotic arm using Denavit-...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.5341,
+      "cosine_sim": 0.8574,
+      "bleu_score": 0.0817
+    },
+    {
+      "pair_id": 7,
+      "guideline": "Implement a Proportional-Integral-Derivative (PID) controller for moto...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.4299,
+      "cosine_sim": 0.9076,
+      "bleu_score": 0.1081
+    },
+    {
+      "pair_id": 7,
+      "guideline": "Design a path-planning algorithm using the Rapidly-exploring Random Tr...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.7442,
+      "cosine_sim": 0.7231,
+      "bleu_score": 0.004
+    },
+    {
+      "pair_id": 7,
+      "guideline": "Explain the physiological effects of beta-blockers on cardiac arrhythm...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.7585,
+      "cosine_sim": 0.0,
+      "bleu_score": 0.0028
+    },
+    {
+      "pair_id": 8,
+      "guideline": "Apply the principles of the Twelve-Factor App methodology for building...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.5606,
+      "cosine_sim": 0.8429,
+      "bleu_score": 0.0346
+    },
+    {
+      "pair_id": 8,
+      "guideline": "Compare Blue-Green Deployment with Canary releases to minimize product...",
+      "ground_truth": "Partially Covered",
+      "l2_distance": 0.6615,
+      "cosine_sim": 0.7812,
+      "bleu_score": 0.0056
+    },
+    {
+      "pair_id": 8,
+      "guideline": "Implement a Circuit Breaker pattern to prevent cascading failures in d...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 0.8432,
+      "cosine_sim": 0.6445,
+      "bleu_score": 0.0082
+    },
+    {
+      "pair_id": 8,
+      "guideline": "Describe the synthesis of Adenosine Triphosphate (ATP) during cellular...",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.5279,
+      "cosine_sim": 0.0,
+      "bleu_score": 0
+    },
+    {
+      "pair_id": 9,
+      "guideline": "Demonstrate an understanding of the relationship between client-side (...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.6923,
+      "cosine_sim": 0.7604,
+      "bleu_score": 0.0036
+    },
+    {
+      "pair_id": 9,
+      "guideline": "Utilize PHP control structures (loops) and data structures (arrays) to...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.7773,
+      "cosine_sim": 0.6979,
+      "bleu_score": 0.0035
+    },
+    {
+      "pair_id": 9,
+      "guideline": "Implement database connectivity using MySQLi or PDO to retrieve and di...",
+      "ground_truth": "Fully Covered",
+      "l2_distance": 0.5416,
+      "cosine_sim": 0.8533,
+      "bleu_score": 0.0064
+    },
+    {
+      "pair_id": 9,
+      "guideline": "Apply security best practices to prevent SQL Injection attacks",
+      "ground_truth": "Not Covered",
+      "l2_distance": 1.2648,
+      "cosine_sim": 0.2001,
+      "bleu_score": 0.0042
+    }
+  ],
+  "summary": {
+    "Fully Covered": {
+      "count": 13,
+      "mean_cosine": 0.847,
+      "mean_bleu": 0.0549,
+      "mean_l2": 0.5437
+    },
+    "Partially Covered": {
+      "count": 10,
+      "mean_cosine": 0.7711,
+      "mean_bleu": 0.0516,
+      "mean_l2": 0.644
+    },
+    "Not Covered": {
+      "count": 12,
+      "mean_cosine": 0.2932,
+      "mean_bleu": 0.0034,
+      "mean_l2": 1.2903
+    }
+  }
+}

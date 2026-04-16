@@ -29,8 +29,8 @@ embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # Using GitHub Models endpoint with OpenAI-compatible SDK
 llm_engine = ChatOpenAI(
-    model="gpt-4o-mini",
-    # model="gpt-4o",
+    # model="gpt-4o-mini",
+    model="gpt-4o",
     # model="gpt-4.1-mini",
     api_key=token,
     base_url="https://models.inference.ai.azure.com",
